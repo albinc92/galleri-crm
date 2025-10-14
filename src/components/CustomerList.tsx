@@ -44,10 +44,12 @@ export default function CustomerList() {
   })
 
   const filteredCustomers = customers?.filter((customer: CustomerWithContacts) => {
+    if (!searchTerm) return true
+    
     const search = searchTerm.toLowerCase()
     return (
-      customer.foretagsnamn.toLowerCase().includes(search) ||
-      customer.kundnr.toLowerCase().includes(search) ||
+      customer.foretagsnamn?.toLowerCase().includes(search) ||
+      String(customer.kundnr || '').toLowerCase().includes(search) ||
       customer.stad?.toLowerCase().includes(search) ||
       customer.telefon?.toLowerCase().includes(search)
     )
