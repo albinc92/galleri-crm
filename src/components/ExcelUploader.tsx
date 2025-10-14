@@ -27,22 +27,95 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
       // Transform Excel data to CustomerWithContacts format
-      const customers: CustomerWithContacts[] = jsonData.map((row: any, index: number) => ({
-        id: `imported-${index}-${Date.now()}`,
-        kundnr: row['Kundnr'] || row['kundnr'] || `K${String(index + 1).padStart(3, '0')}`,
-        aktiv: row['Aktiv'] === 'Ja' || row['aktiv'] === true || row['Aktiv'] === true || true,
-        foretagsnamn: row['Företagsnamn'] || row['foretagsnamn'] || row['Företag'] || '',
-        adress: row['Adress'] || row['adress'] || '',
-        postnummer: row['Postnummer'] || row['postnummer'] || '',
-        stad: row['Stad'] || row['stad'] || '',
-        telefon: row['Telefon'] || row['telefon'] || row['Telefon företag'] || '',
-        bokat_besok: row['Bokat besök'] === 'Ja' || row['bokat_besok'] === true || false,
-        anteckningar: row['Anteckningar'] || row['anteckningar'] || '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        contacts: [],
-        sales: [],
-      }))
+      const customers: CustomerWithContacts[] = jsonData.map((row: any, index: number) => {
+        const customer: CustomerWithContacts = {
+          id: `imported-${index}-${Date.now()}`,
+          kundnr: row['Kundnr'] || `K${String(index + 1).padStart(3, '0')}`,
+          aktiv: row['Aktiv kund'] === 'Ja' || row['Aktiv kund'] === 'ja' || true,
+          foretagsnamn: row['Namn'] || '',
+          adress: row['Postadress'] || row['Adress'] || '',
+          postnummer: row['Postnr'] || '',
+          stad: '', // Extract from Postadress if needed
+          telefon: row['Telefon'] || '',
+          bokat_besok: !!row['Nästa besök'],
+          anteckningar: [
+            row['Intresse'] ? `Intresse: ${row['Intresse']}` : '',
+            row['Köpt vad'] ? `Köpt: ${row['Köpt vad']}` : '',
+            row['Köpt vad innan'] ? `Tidigare köp: ${row['Köpt vad innan']}` : '',
+            row['Text email Erbjudande 1'] ? `Erbjudande 1: ${row['Text email Erbjudande 1']}` : '',
+            row['Text email Erbjudande 2'] ? `Erbjudande 2: ${row['Text email Erbjudande 2']}` : '',
+          ].filter(Boolean).join('\n\n') || '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          contacts: [],
+          sales: [],
+        }
+
+        // Add Ordförande contact if data exists
+        if (row['Namn Ordförande'] || row['Email Ordförande']) {
+          customer.contacts!.push({
+            id: `contact-ordf-${index}-${Date.now()}`,
+            customer_id: customer.id,
+            role: 'ordforande',
+            namn: row['Namn Ordförande'] || '',
+            email: row['Email Ordförande'] || '',
+            telefon: row['Tel ordförande'] || '',
+            mobil: row['Mobil Ordförande'] || '',
+            senast_kontakt: row['Kontakt Ordf'] || '',
+            aterkom: row['Återkom Ordförande'] || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
+
+        // Add Kassör contact if data exists
+        if (row['Namn Kassör'] || row['Email Kassör']) {
+          customer.contacts!.push({
+            id: `contact-kass-${index}-${Date.now()}`,
+            customer_id: customer.id,
+            role: 'kassor',
+            namn: row['Namn Kassör'] || '',
+            email: row['Email Kassör'] || '',
+            telefon: row['Tel kassör'] || '',
+            mobil: row['Mobil Kassör'] || '',
+            senast_kontakt: row['Kontakt Kassör'] || '',
+            aterkom: row['Återkom Kassör'] || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
+
+        // Add Ansvarig contact if data exists
+        if (row['Namn Ansvarig 1'] || row['Email Ansvarig 1']) {
+          customer.contacts!.push({
+            id: `contact-ansv-${index}-${Date.now()}`,
+            customer_id: customer.id,
+            role: 'ordforande', // Use ordforande role as placeholder
+            namn: row['Namn Ansvarig 1'] || '',
+            email: row['Email Ansvarig 1'] || '',
+            telefon: row['Tel Ansvarig 1'] || '',
+            mobil: row['Mobil Ansvarig 1'] || '',
+            senast_kontakt: row['Kontakt Ansv 1'] || '',
+            aterkom: row['Återkom Ansv 1'] || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
+
+        // Add sales data if exists
+        if (row['Köpt vad'] && row['Senaste besök']) {
+          customer.sales!.push({
+            id: `sale-${index}-${Date.now()}`,
+            customer_id: customer.id,
+            datum: row['Senaste besök'] || '',
+            belopp: 0, // Not in Excel
+            sald_konst: row['Köpt vad'] || '',
+            created_at: new Date().toISOString(),
+          })
+        }
+
+        return customer
+      })
 
       // Save to localStorage
       storageService.saveCustomers(customers)
@@ -117,7 +190,8 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
             <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
               <li>Upload an Excel file (.xlsx or .xls)</li>
               <li>First row should contain column headers</li>
-              <li>Expected columns: Kundnr, Företagsnamn, Adress, Postnummer, Stad, Telefon, etc.</li>
+              <li>Supports columns: Kundnr, Namn, Adress, Postnr, Telefon, Aktiv kund, etc.</li>
+              <li>Will import contacts (Ordförande, Kassör, Ansvarig) and sales data</li>
               <li>Data will be stored in browser localStorage (demo mode)</li>
             </ul>
           </div>
