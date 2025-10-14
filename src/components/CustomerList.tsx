@@ -60,11 +60,19 @@ export default function CustomerList() {
     let aValue: any = a[sortField]
     let bValue: any = b[sortField]
 
-    // Handle boolean fields first
-    if (sortField === 'aktiv' || sortField === 'bokat_besok') {
+    // Handle boolean field
+    if (sortField === 'bokat_besok') {
       const aNum = aValue ? 1 : 0
       const bNum = bValue ? 1 : 0
       return sortOrder === 'asc' ? aNum - bNum : bNum - aNum
+    }
+
+    // Handle aktiv field (JAA, NJA, NEJ) with custom sort order
+    if (sortField === 'aktiv') {
+      const order = { 'JAA': 3, 'JA': 3, 'NJA': 2, 'NEJ': 1, '': 0 }
+      const aOrder = order[String(aValue || '').toUpperCase() as keyof typeof order] || 0
+      const bOrder = order[String(bValue || '').toUpperCase() as keyof typeof order] || 0
+      return sortOrder === 'asc' ? aOrder - bOrder : bOrder - aOrder
     }
 
     // Handle null/undefined values by converting to empty string
@@ -219,7 +227,7 @@ export default function CustomerList() {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Status {sortField === 'aktiv' && (sortOrder === 'asc' ? '↑' : '↓')}
+                Aktiv {sortField === 'aktiv' && (sortOrder === 'asc' ? '↑' : '↓')}
               </button>
               <button
                 onClick={() => {

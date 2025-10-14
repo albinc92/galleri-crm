@@ -28,32 +28,37 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
 
       // Transform Excel data to CustomerWithContacts format
       const customers: CustomerWithContacts[] = jsonData.map((row: any, index: number) => {
-        // Extract city from Postadress (typically format: "Address, Postnr Stad")
-        const postadress = row['Postadress'] || row['Adress'] || ''
+        // In this Excel format:
+        // - "Adress" = street address (e.g., "FURUVÄGEN 23")
+        // - "Postadress" = city + postal code (e.g., "BEDDINGESTRAND 231 76" or "LUND 221 86")
+        const streetAddress = row['Adress'] || ''
+        const postadress = row['Postadress'] || ''
+        
+        // Extract city and postal code from Postadress
+        // Format is typically "CITY POSTNR" like "BEDDINGESTRAND 231 76"
         let stad = ''
+        let postnummer = row['Postnr'] || ''
+        
         if (postadress) {
-          // Try to extract city from address like "Storgatan 10, 111 22 Stockholm"
-          const parts = postadress.split(',')
-          if (parts.length > 1) {
-            // Get the part after the comma and extract the city (after postal code)
-            const lastPart = parts[parts.length - 1].trim()
-            const match = lastPart.match(/\d{3}\s?\d{2}\s+(.+)/)
-            if (match) {
-              stad = match[1].trim()
-            } else {
-              // If no postal code pattern, just use the last part
-              stad = lastPart
-            }
+          // Try to extract city and postal code
+          // Pattern: "CITY ### ##" where city can be multiple words
+          const match = postadress.match(/^(.+?)\s+(\d{3}\s?\d{2})$/)
+          if (match) {
+            stad = match[1].trim()
+            postnummer = postnummer || match[2].replace(/\s+/g, ' ').trim()
+          } else {
+            // If no postal code found, treat entire string as city
+            stad = postadress.trim()
           }
         }
 
         const customer: CustomerWithContacts = {
           id: `imported-${index}-${Date.now()}`,
-          kundnr: row['Kundnr'] || `K${String(index + 1).padStart(3, '0')}`,
-          aktiv: row['Aktiv kund'] === 'Ja' || row['Aktiv kund'] === 'ja' || true,
+          kundnr: String(row['Kundnr'] || `K${String(index + 1).padStart(3, '0')}`),
+          aktiv: String(row['Aktiv kund'] || 'NEJ').toUpperCase(),
           foretagsnamn: row['Namn'] || '',
-          adress: postadress,
-          postnummer: row['Postnr'] || '',
+          adress: streetAddress,
+          postnummer: postnummer,
           stad: stad,
           telefon: row['Telefon'] || '',
           bokat_besok: !!row['Nästa besök'],

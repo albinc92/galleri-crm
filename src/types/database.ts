@@ -13,7 +13,7 @@ export interface Database {
         Row: {
           id: string
           kundnr: string
-          aktiv: boolean
+          aktiv: string
           foretagsnamn: string
           adress: string | null
           postnummer: string | null
@@ -27,7 +27,7 @@ export interface Database {
         Insert: {
           id?: string
           kundnr: string
-          aktiv?: boolean
+          aktiv?: string
           foretagsnamn: string
           adress?: string | null
           postnummer?: string | null
@@ -41,7 +41,7 @@ export interface Database {
         Update: {
           id?: string
           kundnr?: string
-          aktiv?: boolean
+          aktiv?: string
           foretagsnamn?: string
           adress?: string | null
           postnummer?: string | null
