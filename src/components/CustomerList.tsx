@@ -3,59 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
+import ExcelUploader from './ExcelUploader'
 import { Search, Plus, X } from 'lucide-react'
 
-// Mock data for demo mode
-const mockCustomers: CustomerWithContacts[] = [
-  {
-    id: '1',
-    kundnr: 'K001',
-    aktiv: true,
-    foretagsnamn: 'Konstgalleriet Stockholm',
-    adress: 'Storgatan 10',
-    postnummer: '111 22',
-    stad: 'Stockholm',
-    telefon: '08-123 45 67',
-    bokat_besok: true,
-    anteckningar: 'Intresserade av moderna målningar',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    contacts: [],
-    sales: []
-  },
-  {
-    id: '2',
-    kundnr: 'K002',
-    aktiv: true,
-    foretagsnamn: 'Galleri Moderna',
-    adress: 'Kungsgatan 25',
-    postnummer: '411 19',
-    stad: 'Göteborg',
-    telefon: '031-987 65 43',
-    bokat_besok: false,
-    anteckningar: 'Besökt mässan i februari',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    contacts: [],
-    sales: []
-  },
-  {
-    id: '3',
-    kundnr: 'K003',
-    aktiv: false,
-    foretagsnamn: 'Konst & Design Malmö',
-    adress: 'Västra Hamngatan 5',
-    postnummer: '211 22',
-    stad: 'Malmö',
-    telefon: '040-555 12 34',
-    bokat_besok: false,
-    anteckningar: '',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    contacts: [],
-    sales: []
-  }
-]
+// Mock data will be loaded from localStorage or Excel upload
 
 export default function CustomerList() {
   const [searchTerm, setSearchTerm] = useState('')
@@ -66,8 +17,9 @@ export default function CustomerList() {
     queryKey: ['customers'],
     queryFn: async () => {
       if (!isSupabaseConfigured || !supabase) {
-        // Return mock data in demo mode
-        return mockCustomers
+        // Return data from localStorage in demo mode
+        const stored = localStorage.getItem('galleri-customers')
+        return stored ? JSON.parse(stored) as CustomerWithContacts[] : []
       }
 
       const { data, error } = await supabase
@@ -116,7 +68,7 @@ export default function CustomerList() {
 
   return (
     <div className="space-y-4">
-      {/* Header with Search and New Button */}
+      {/* Header with Search and Buttons */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -128,6 +80,9 @@ export default function CustomerList() {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
+        {(!isSupabaseConfigured || !supabase) && (
+          <ExcelUploader onUploadComplete={refetch} />
+        )}
         <button
           onClick={handleNewCustomer}
           className="flex items-center justify-center gap-2 bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition-colors"
@@ -171,7 +126,14 @@ export default function CustomerList() {
 
       {filteredCustomers?.length === 0 && (
         <div className="text-center py-12 text-gray-500">
-          Inga kunder hittades. {searchTerm && 'Prova en annan sökning eller '}Klicka på "Ny Post" för att lägga till en ny kund.
+          {searchTerm ? (
+            <>Inga kunder hittades. Prova en annan sökning.</>
+          ) : (
+            <>
+              Inga kunder ännu. {(!isSupabaseConfigured || !supabase) && <>Klicka på "Import Excel" för att importera data eller </>}
+              klicka på "Ny Post" för att lägga till en ny kund.
+            </>
+          )}
         </div>
       )}
 
