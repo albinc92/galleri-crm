@@ -14,7 +14,7 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     kundnr: '',
-    aktiv: true,
+    aktiv: 'NEJ',
     foretagsnamn: '',
     adress: '',
     postnummer: '',
@@ -191,17 +191,20 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="aktiv"
-            checked={formData.aktiv}
-            onChange={(e) => setFormData({ ...formData, aktiv: e.target.checked })}
-            className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500"
-          />
-          <label htmlFor="aktiv" className="text-sm font-medium text-gray-700">
-            Aktiv
+        <div>
+          <label htmlFor="aktiv" className="block text-sm font-medium text-gray-700 mb-1">
+            Aktiv Status
           </label>
+          <select
+            id="aktiv"
+            value={formData.aktiv}
+            onChange={(e) => setFormData({ ...formData, aktiv: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            <option value="JAA">JAA - Aktiv</option>
+            <option value="NJA">NJA - Delvis aktiv</option>
+            <option value="NEJ">NEJ - Inaktiv</option>
+          </select>
         </div>
       </div>
 

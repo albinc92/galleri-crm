@@ -28,38 +28,14 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
 
       // Transform Excel data to CustomerWithContacts format
       const customers: CustomerWithContacts[] = jsonData.map((row: any, index: number) => {
-        // In this Excel format:
-        // - "Adress" = street address (e.g., "FURUVÄGEN 23")
-        // - "Postadress" = city + postal code (e.g., "BEDDINGESTRAND 231 76" or "LUND 221 86")
-        const streetAddress = row['Adress'] || ''
-        const postadress = row['Postadress'] || ''
-        
-        // Extract city and postal code from Postadress
-        // Format is typically "CITY POSTNR" like "BEDDINGESTRAND 231 76"
-        let stad = ''
-        let postnummer = row['Postnr'] || ''
-        
-        if (postadress) {
-          // Try to extract city and postal code
-          // Pattern: "CITY ### ##" where city can be multiple words
-          const match = postadress.match(/^(.+?)\s+(\d{3}\s?\d{2})$/)
-          if (match) {
-            stad = match[1].trim()
-            postnummer = postnummer || match[2].replace(/\s+/g, ' ').trim()
-          } else {
-            // If no postal code found, treat entire string as city
-            stad = postadress.trim()
-          }
-        }
-
         const customer: CustomerWithContacts = {
           id: `imported-${index}-${Date.now()}`,
           kundnr: String(row['Kundnr'] || `K${String(index + 1).padStart(3, '0')}`),
           aktiv: String(row['Aktiv kund'] || 'NEJ').toUpperCase(),
           foretagsnamn: row['Namn'] || '',
-          adress: streetAddress,
-          postnummer: postnummer,
-          stad: stad,
+          adress: row['Adress'] || '',
+          postnummer: row['Postnr'] || '',
+          stad: row['Postadress'] || '',
           telefon: row['Telefon'] || '',
           bokat_besok: !!row['Nästa besök'],
           anteckningar: [
