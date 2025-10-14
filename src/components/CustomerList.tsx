@@ -1,9 +1,61 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
 import { Search, Plus, X } from 'lucide-react'
+
+// Mock data for demo mode
+const mockCustomers: CustomerWithContacts[] = [
+  {
+    id: '1',
+    kundnr: 'K001',
+    aktiv: true,
+    foretagsnamn: 'Konstgalleriet Stockholm',
+    adress: 'Storgatan 10',
+    postnummer: '111 22',
+    stad: 'Stockholm',
+    telefon: '08-123 45 67',
+    bokat_besok: true,
+    anteckningar: 'Intresserade av moderna målningar',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    contacts: [],
+    sales: []
+  },
+  {
+    id: '2',
+    kundnr: 'K002',
+    aktiv: true,
+    foretagsnamn: 'Galleri Moderna',
+    adress: 'Kungsgatan 25',
+    postnummer: '411 19',
+    stad: 'Göteborg',
+    telefon: '031-987 65 43',
+    bokat_besok: false,
+    anteckningar: 'Besökt mässan i februari',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    contacts: [],
+    sales: []
+  },
+  {
+    id: '3',
+    kundnr: 'K003',
+    aktiv: false,
+    foretagsnamn: 'Konst & Design Malmö',
+    adress: 'Västra Hamngatan 5',
+    postnummer: '211 22',
+    stad: 'Malmö',
+    telefon: '040-555 12 34',
+    bokat_besok: false,
+    anteckningar: '',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    contacts: [],
+    sales: []
+  }
+]
 
 export default function CustomerList() {
   const [searchTerm, setSearchTerm] = useState('')
@@ -13,6 +65,11 @@ export default function CustomerList() {
   const { data: customers, isLoading, refetch } = useQuery({
     queryKey: ['customers'],
     queryFn: async () => {
+      if (!isSupabaseConfigured || !supabase) {
+        // Return mock data in demo mode
+        return mockCustomers
+      }
+
       const { data, error } = await supabase
         .from('customers')
         .select(`

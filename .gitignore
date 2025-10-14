@@ -19,3 +19,6 @@ dist-ssr
 .env
 .env.local
 .env.production
+
+# Requirements/sensitive files
+requirements/

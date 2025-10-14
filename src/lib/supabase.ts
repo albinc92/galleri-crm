@@ -1,11 +1,20 @@
-import { createClient } from '@supabase/supabase-js'
-import { Database } from './types/database'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { Database } from '../types/database'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey)
+
+// Only create client if credentials are available and valid
+let supabaseClient: SupabaseClient<Database> | null = null
+
+if (isSupabaseConfigured) {
+  try {
+    supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey)
+  } catch (error) {
+    console.error('Failed to create Supabase client:', error)
+  }
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+export const supabase = supabaseClient as any
