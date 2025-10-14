@@ -150,69 +150,89 @@ export default function CustomerList() {
         </button>
       </div>
 
-      {/* Sorting and Stats Bar */}
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-gray-600">
-          Visar {startIndex + 1}-{Math.min(endIndex, totalItems)} av {totalItems} kunder
-        </span>
-        <div className="flex items-center gap-2 ml-auto">
-          <span className="text-gray-600">Sortera:</span>
-          <button
-            onClick={() => handleSort('foretagsnamn')}
-            className={`px-3 py-1 rounded-lg transition-colors ${
-              sortField === 'foretagsnamn'
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Företag {sortField === 'foretagsnamn' && (sortOrder === 'asc' ? '↑' : '↓')}
-          </button>
-          <button
-            onClick={() => handleSort('kundnr')}
-            className={`px-3 py-1 rounded-lg transition-colors ${
-              sortField === 'kundnr'
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Kundnr {sortField === 'kundnr' && (sortOrder === 'asc' ? '↑' : '↓')}
-          </button>
-          <button
-            onClick={() => handleSort('stad')}
-            className={`px-3 py-1 rounded-lg transition-colors ${
-              sortField === 'stad'
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Stad {sortField === 'stad' && (sortOrder === 'asc' ? '↑' : '↓')}
-          </button>
-          <button
-            onClick={() => handleSort('aktiv')}
-            className={`px-3 py-1 rounded-lg transition-colors ${
-              sortField === 'aktiv'
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Status {sortField === 'aktiv' && (sortOrder === 'asc' ? '↑' : '↓')}
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-gray-600">Per sida:</span>
-          <select
-            value={itemsPerPage}
-            onChange={(e) => {
-              setItemsPerPage(Number(e.target.value))
-              setCurrentPage(1)
-            }}
-            className="px-2 py-1 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value={12}>12</option>
-            <option value={24}>24</option>
-            <option value={48}>48</option>
-            <option value={96}>96</option>
-          </select>
+      {/* Stats and Controls Bar */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <div className="flex flex-col gap-4">
+          {/* Stats Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-sm text-gray-600">
+              Visar {startIndex + 1}-{Math.min(endIndex, totalItems)} av {totalItems} kunder
+            </span>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Per sida:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value))
+                  setCurrentPage(1)
+                }}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
+              >
+                <option value={12}>12</option>
+                <option value={24}>24</option>
+                <option value={48}>48</option>
+                <option value={96}>96</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Sorting Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">Sortera:</span>
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+              <button
+                onClick={() => handleSort('foretagsnamn')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  sortField === 'foretagsnamn'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Företag {sortField === 'foretagsnamn' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </button>
+              <button
+                onClick={() => handleSort('kundnr')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  sortField === 'kundnr'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Kundnr {sortField === 'kundnr' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </button>
+              <button
+                onClick={() => handleSort('stad')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  sortField === 'stad'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Stad {sortField === 'stad' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </button>
+              <button
+                onClick={() => handleSort('aktiv')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  sortField === 'aktiv'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Status {sortField === 'aktiv' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </button>
+              <button
+                onClick={() => {
+                  setSortField('foretagsnamn')
+                  setSortOrder('asc')
+                  setCurrentPage(1)
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors col-span-2 sm:col-span-1"
+              >
+                ✕ Rensa sortering
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
