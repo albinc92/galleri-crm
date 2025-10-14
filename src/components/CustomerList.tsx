@@ -4,7 +4,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
 import ExcelUploader from './ExcelUploader'
-import { Search, Plus, X, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 
 // Mock data will be loaded from localStorage or Excel upload
 
