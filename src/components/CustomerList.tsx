@@ -217,7 +217,7 @@ export default function CustomerList() {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Stad {sortField === 'stad' && (sortOrder === 'asc' ? '↑' : '↓')}
+                Postadress {sortField === 'stad' && (sortOrder === 'asc' ? '↑' : '↓')}
               </button>
               <button
                 onClick={() => handleSort('aktiv')}
