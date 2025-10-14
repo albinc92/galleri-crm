@@ -53,23 +53,23 @@ export default function CustomerList() {
     )
   })
 
-  // Sort customers
-  const sortedCustomers = filteredCustomers?.sort((a: CustomerWithContacts, b: CustomerWithContacts) => {
+  // Sort customers (create a copy to avoid mutating the original array)
+  const sortedCustomers = filteredCustomers?.slice().sort((a: CustomerWithContacts, b: CustomerWithContacts) => {
     let aValue: any = a[sortField]
     let bValue: any = b[sortField]
 
-    // Handle null values
+    // Handle null/undefined values
     if (aValue === null || aValue === undefined) aValue = ''
     if (bValue === null || bValue === undefined) bValue = ''
 
-    // For boolean fields
+    // For boolean fields, convert to numbers
     if (typeof aValue === 'boolean') {
       aValue = aValue ? 1 : 0
       bValue = bValue ? 1 : 0
     }
 
-    // For string fields
-    if (typeof aValue === 'string') {
+    // For string fields, convert to lowercase for comparison
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
       aValue = aValue.toLowerCase()
       bValue = bValue.toLowerCase()
     }
