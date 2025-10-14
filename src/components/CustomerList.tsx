@@ -58,24 +58,20 @@ export default function CustomerList() {
     let aValue: any = a[sortField]
     let bValue: any = b[sortField]
 
-    // Handle null/undefined values
-    if (aValue === null || aValue === undefined) aValue = ''
-    if (bValue === null || bValue === undefined) bValue = ''
-
-    // For boolean fields, convert to numbers
-    if (typeof aValue === 'boolean') {
-      aValue = aValue ? 1 : 0
-      bValue = bValue ? 1 : 0
+    // Handle boolean fields first
+    if (sortField === 'aktiv' || sortField === 'bokat_besok') {
+      const aNum = aValue ? 1 : 0
+      const bNum = bValue ? 1 : 0
+      return sortOrder === 'asc' ? aNum - bNum : bNum - aNum
     }
 
-    // For string fields, convert to lowercase for comparison
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      aValue = aValue.toLowerCase()
-      bValue = bValue.toLowerCase()
-    }
+    // Handle null/undefined values by converting to empty string
+    const aStr = (aValue === null || aValue === undefined) ? '' : String(aValue).toLowerCase()
+    const bStr = (bValue === null || bValue === undefined) ? '' : String(bValue).toLowerCase()
 
-    if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1
-    if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1
+    // String comparison
+    if (aStr < bStr) return sortOrder === 'asc' ? -1 : 1
+    if (aStr > bStr) return sortOrder === 'asc' ? 1 : -1
     return 0
   })
 
