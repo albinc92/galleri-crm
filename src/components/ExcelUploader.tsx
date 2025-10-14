@@ -28,14 +28,33 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
 
       // Transform Excel data to CustomerWithContacts format
       const customers: CustomerWithContacts[] = jsonData.map((row: any, index: number) => {
+        // Extract city from Postadress (typically format: "Address, Postnr Stad")
+        const postadress = row['Postadress'] || row['Adress'] || ''
+        let stad = ''
+        if (postadress) {
+          // Try to extract city from address like "Storgatan 10, 111 22 Stockholm"
+          const parts = postadress.split(',')
+          if (parts.length > 1) {
+            // Get the part after the comma and extract the city (after postal code)
+            const lastPart = parts[parts.length - 1].trim()
+            const match = lastPart.match(/\d{3}\s?\d{2}\s+(.+)/)
+            if (match) {
+              stad = match[1].trim()
+            } else {
+              // If no postal code pattern, just use the last part
+              stad = lastPart
+            }
+          }
+        }
+
         const customer: CustomerWithContacts = {
           id: `imported-${index}-${Date.now()}`,
           kundnr: row['Kundnr'] || `K${String(index + 1).padStart(3, '0')}`,
           aktiv: row['Aktiv kund'] === 'Ja' || row['Aktiv kund'] === 'ja' || true,
           foretagsnamn: row['Namn'] || '',
-          adress: row['Postadress'] || row['Adress'] || '',
+          adress: postadress,
           postnummer: row['Postnr'] || '',
-          stad: '', // Extract from Postadress if needed
+          stad: stad,
           telefon: row['Telefon'] || '',
           bokat_besok: !!row['Nästa besök'],
           anteckningar: [
