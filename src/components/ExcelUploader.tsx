@@ -55,6 +55,7 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
     message: string
   }>({ type: null, message: '' })
   const [progress, setProgress] = useState({ current: 0, total: 0 })
+  const [errors, setErrors] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,8 +162,10 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
       // Insert customers into Supabase
       let successCount = 0
       let errorCount = 0
+      const errorMessages: string[] = []
       
       setProgress({ current: 0, total: customers.length })
+      setErrors([])
       setStatus({
         type: 'progress',
         message: `Importerar 0/${customers.length} kunder...`,
@@ -221,7 +224,10 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
               .from('contacts')
               .insert(contactsToInsert)
 
-            if (contactsError) console.error('Error inserting contacts:', contactsError)
+            if (contactsError) {
+              console.error('Error inserting contacts:', contactsError)
+              errorMessages.push(`${customer.foretagsnamn} (contacts): ${contactsError.message}`)
+            }
           }
 
           // Insert sales if any
@@ -237,15 +243,22 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
               .from('sales')
               .insert(salesToInsert)
 
-            if (salesError) console.error('Error inserting sales:', salesError)
+            if (salesError) {
+              console.error('Error inserting sales:', salesError)
+              errorMessages.push(`${customer.foretagsnamn} (sales): ${salesError.message}`)
+            }
           }
 
           successCount++
         } catch (error: any) {
           console.error('Error inserting customer:', error)
           errorCount++
+          errorMessages.push(`${customer.foretagsnamn || customer.kundnr || 'Unknown'}: ${error.message}`)
         }
       }
+
+      // Set collected errors
+      setErrors(errorMessages)
 
       if (errorCount === 0) {
         setStatus({
@@ -370,6 +383,26 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
                   ></div>
                 </div>
               )}
+            </div>
+          )}
+
+          {errors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-h-40 overflow-y-auto">
+              <h3 className="text-sm font-semibold text-red-900 mb-2">
+                ⚠️ Import Errors ({errors.length}):
+              </h3>
+              <ul className="text-xs text-red-800 space-y-1">
+                {errors.slice(0, 10).map((error, index) => (
+                  <li key={index} className="break-words">
+                    {error}
+                  </li>
+                ))}
+                {errors.length > 10 && (
+                  <li className="font-semibold">
+                    ... and {errors.length - 10} more errors
+                  </li>
+                )}
+              </ul>
             </div>
           )}
 
