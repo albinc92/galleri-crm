@@ -12,8 +12,27 @@ interface ExcelUploaderProps {
 const excelDateToISO = (serial: any): string | null => {
   if (!serial) return null
   
-  // If it's already a string that looks like a date, return it
-  if (typeof serial === 'string' && serial.includes('-')) return serial
+  // If it's already a string
+  if (typeof serial === 'string') {
+    // Check if it's already a valid date format (YYYY-MM-DD)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(serial)) {
+      // Validate the actual date
+      const date = new Date(serial)
+      if (!isNaN(date.getTime())) {
+        return serial
+      }
+    }
+    // Handle partial dates like "2018-05" (missing day)
+    if (/^\d{4}-\d{2}$/.test(serial)) {
+      return `${serial}-01` // Default to first day of month
+    }
+    // If it's some other string format, try parsing it
+    const parsed = new Date(serial)
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0]
+    }
+    return null
+  }
   
   // Convert Excel serial number to date
   const excelEpoch = new Date(1899, 11, 30) // Excel's epoch
@@ -22,6 +41,10 @@ const excelDateToISO = (serial: any): string | null => {
   if (isNaN(days)) return null
   
   const date = new Date(excelEpoch.getTime() + days * 86400000)
+  
+  // Validate the date is reasonable (not in far future/past)
+  if (date.getFullYear() < 1900 || date.getFullYear() > 2100) return null
+  
   return date.toISOString().split('T')[0] // Return YYYY-MM-DD
 }
 
@@ -172,7 +195,14 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
             .select()
             .single()
 
-          if (customerError) throw customerError
+          if (customerError) {
+            // Skip duplicates silently
+            if (customerError.code === '23505') {
+              console.log(`Skipping duplicate customer: ${customer.kundnr}`)
+              continue
+            }
+            throw customerError
+          }
 
           // Insert contacts if any
           if (customer.contacts && customer.contacts.length > 0) {
