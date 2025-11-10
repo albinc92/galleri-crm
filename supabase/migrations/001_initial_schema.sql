@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE customers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   kundnr TEXT NOT NULL UNIQUE,
-  aktiv BOOLEAN DEFAULT true,
+  aktiv TEXT DEFAULT 'NEJ',
   foretagsnamn TEXT NOT NULL,
   adress TEXT,
   postnummer TEXT,
@@ -59,42 +59,42 @@ ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 
--- Create policies for authenticated users
-CREATE POLICY "Enable read access for authenticated users" ON customers
-  FOR SELECT TO authenticated USING (true);
+-- Create policies for public access (anon users)
+CREATE POLICY "Enable read access for all users" ON customers
+  FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "Enable insert for authenticated users" ON customers
-  FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Enable insert for all users" ON customers
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "Enable update for authenticated users" ON customers
-  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Enable update for all users" ON customers
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Enable delete for authenticated users" ON customers
-  FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Enable delete for all users" ON customers
+  FOR DELETE TO anon, authenticated USING (true);
 
-CREATE POLICY "Enable read access for authenticated users" ON contacts
-  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Enable read access for all users" ON contacts
+  FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "Enable insert for authenticated users" ON contacts
-  FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Enable insert for all users" ON contacts
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "Enable update for authenticated users" ON contacts
-  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Enable update for all users" ON contacts
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Enable delete for authenticated users" ON contacts
-  FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Enable delete for all users" ON contacts
+  FOR DELETE TO anon, authenticated USING (true);
 
-CREATE POLICY "Enable read access for authenticated users" ON sales
-  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Enable read access for all users" ON sales
+  FOR SELECT TO anon, authenticated USING (true);
 
-CREATE POLICY "Enable insert for authenticated users" ON sales
-  FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Enable insert for all users" ON sales
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-CREATE POLICY "Enable update for authenticated users" ON sales
-  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Enable update for all users" ON sales
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Enable delete for authenticated users" ON sales
-  FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Enable delete for all users" ON sales
+  FOR DELETE TO anon, authenticated USING (true);
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

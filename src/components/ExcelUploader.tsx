@@ -2,18 +2,36 @@ import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { Upload, X, AlertCircle, CheckCircle } from 'lucide-react'
 import { CustomerWithContacts } from '../types'
-import { storageService } from '../lib/storage'
+import { supabase } from '../lib/supabase'
 
 interface ExcelUploaderProps {
   onUploadComplete: () => void
 }
 
+// Helper function to convert Excel date serial to ISO date string
+const excelDateToISO = (serial: any): string | null => {
+  if (!serial) return null
+  
+  // If it's already a string that looks like a date, return it
+  if (typeof serial === 'string' && serial.includes('-')) return serial
+  
+  // Convert Excel serial number to date
+  const excelEpoch = new Date(1899, 11, 30) // Excel's epoch
+  const days = typeof serial === 'number' ? serial : parseFloat(serial)
+  
+  if (isNaN(days)) return null
+  
+  const date = new Date(excelEpoch.getTime() + days * 86400000)
+  return date.toISOString().split('T')[0] // Return YYYY-MM-DD
+}
+
 export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [status, setStatus] = useState<{
-    type: 'success' | 'error' | null
+    type: 'success' | 'error' | 'progress' | null
     message: string
   }>({ type: null, message: '' })
+  const [progress, setProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +108,7 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
           customer.contacts!.push({
             id: `contact-ansv-${index}-${Date.now()}`,
             customer_id: customer.id,
-            role: 'ordforande', // Use ordforande role as placeholder
+            role: 'ansvarig',
             namn: row['Namn Ansvarig 1'] || '',
             email: row['Email Ansvarig 1'] || '',
             telefon: row['Tel Ansvarig 1'] || '',
@@ -117,13 +135,99 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
         return customer
       })
 
-      // Save to localStorage
-      storageService.saveCustomers(customers)
-
+      // Insert customers into Supabase
+      let successCount = 0
+      let errorCount = 0
+      
+      setProgress({ current: 0, total: customers.length })
       setStatus({
-        type: 'success',
-        message: `✅ Successfully imported ${customers.length} customers!`,
+        type: 'progress',
+        message: `Importerar 0/${customers.length} kunder...`,
       })
+
+      for (let i = 0; i < customers.length; i++) {
+        const customer = customers[i]
+        try {
+          // Update progress
+          setProgress({ current: i + 1, total: customers.length })
+          setStatus({
+            type: 'progress',
+            message: `Importerar ${i + 1}/${customers.length} kunder...`,
+          })
+
+          // Insert customer (without contacts and sales)
+          const { data: insertedCustomer, error: customerError } = await supabase
+            .from('customers')
+            .insert({
+              kundnr: customer.kundnr,
+              aktiv: customer.aktiv,
+              foretagsnamn: customer.foretagsnamn,
+              adress: customer.adress,
+              postnummer: customer.postnummer,
+              stad: customer.stad,
+              telefon: customer.telefon,
+              bokat_besok: customer.bokat_besok,
+              anteckningar: customer.anteckningar,
+            })
+            .select()
+            .single()
+
+          if (customerError) throw customerError
+
+          // Insert contacts if any
+          if (customer.contacts && customer.contacts.length > 0) {
+            const contactsToInsert = customer.contacts.map(contact => ({
+              customer_id: insertedCustomer.id,
+              role: contact.role,
+              namn: contact.namn,
+              telefon: contact.telefon,
+              mobil: contact.mobil,
+              email: contact.email,
+              senast_kontakt: excelDateToISO(contact.senast_kontakt),
+              aterkom: excelDateToISO(contact.aterkom),
+            }))
+
+            const { error: contactsError } = await supabase
+              .from('contacts')
+              .insert(contactsToInsert)
+
+            if (contactsError) console.error('Error inserting contacts:', contactsError)
+          }
+
+          // Insert sales if any
+          if (customer.sales && customer.sales.length > 0) {
+            const salesToInsert = customer.sales.map(sale => ({
+              customer_id: insertedCustomer.id,
+              datum: excelDateToISO(sale.datum),
+              belopp: sale.belopp,
+              sald_konst: sale.sald_konst,
+            }))
+
+            const { error: salesError } = await supabase
+              .from('sales')
+              .insert(salesToInsert)
+
+            if (salesError) console.error('Error inserting sales:', salesError)
+          }
+
+          successCount++
+        } catch (error: any) {
+          console.error('Error inserting customer:', error)
+          errorCount++
+        }
+      }
+
+      if (errorCount === 0) {
+        setStatus({
+          type: 'success',
+          message: `✅ Successfully imported ${successCount} customers!`,
+        })
+      } else {
+        setStatus({
+          type: 'error',
+          message: `⚠️ Imported ${successCount} customers, ${errorCount} failed.`,
+        })
+      }
 
       // Reset file input
       if (fileInputRef.current) {
@@ -144,18 +248,28 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
     }
   }
 
-  const handleClearData = () => {
-    if (confirm('Are you sure you want to clear all customer data from localStorage?')) {
-      storageService.clearCustomers()
-      setStatus({
-        type: 'success',
-        message: '🗑️ All customer data cleared!',
-      })
-      setTimeout(() => {
-        onUploadComplete()
-        setIsOpen(false)
-        setStatus({ type: null, message: '' })
-      }, 1500)
+  const handleClearData = async () => {
+    if (confirm('Are you sure you want to delete all customer data from the database?')) {
+      try {
+        const { error } = await supabase.from('customers').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+        
+        if (error) throw error
+
+        setStatus({
+          type: 'success',
+          message: '🗑️ All customer data deleted!',
+        })
+        setTimeout(() => {
+          onUploadComplete()
+          setIsOpen(false)
+          setStatus({ type: null, message: '' })
+        }, 1500)
+      } catch (error: any) {
+        setStatus({
+          type: 'error',
+          message: `❌ Error deleting data: ${error.message}`,
+        })
+      }
     }
   }
 
@@ -192,28 +306,44 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
               <li>First row should contain column headers</li>
               <li>Supports columns: Kundnr, Namn, Adress, Postnr, Telefon, Aktiv kund, etc.</li>
               <li>Will import contacts (Ordförande, Kassör, Ansvarig) and sales data</li>
-              <li>Data will be stored in browser localStorage (demo mode)</li>
+              <li>Data will be stored in Supabase cloud database</li>
             </ul>
           </div>
 
           {status.type && (
             <div
-              className={`flex items-start gap-2 p-3 rounded-lg ${
+              className={`flex flex-col gap-2 p-3 rounded-lg ${
                 status.type === 'success'
                   ? 'bg-green-50 text-green-800'
+                  : status.type === 'progress'
+                  ? 'bg-blue-50 text-blue-800'
                   : 'bg-red-50 text-red-800'
               }`}
             >
-              {status.type === 'success' ? (
-                <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2">
+                {status.type === 'success' ? (
+                  <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                ) : status.type === 'progress' ? (
+                  <div className="w-5 h-5 flex-shrink-0 mt-0.5">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : (
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                )}
+                <p className="text-sm">{status.message}</p>
+              </div>
+              {status.type === 'progress' && progress.total > 0 && (
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                  ></div>
+                </div>
               )}
-              <p className="text-sm">{status.message}</p>
             </div>
           )}
 
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
+          <div className={`border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-colors ${status.type === 'progress' ? 'opacity-50 pointer-events-none' : 'hover:border-blue-400'}`}>
             <input
               ref={fileInputRef}
               type="file"
@@ -221,15 +351,16 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
               onChange={handleFileUpload}
               className="hidden"
               id="excel-upload"
+              disabled={status.type === 'progress'}
             />
             <label
               htmlFor="excel-upload"
-              className="cursor-pointer flex flex-col items-center gap-3"
+              className={`flex flex-col items-center gap-3 ${status.type === 'progress' ? '' : 'cursor-pointer'}`}
             >
               <Upload className="w-12 h-12 text-gray-400" />
               <div>
                 <p className="text-sm font-medium text-gray-900">
-                  Click to upload Excel file
+                  {status.type === 'progress' ? 'Uploading...' : 'Click to upload Excel file'}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">.xlsx or .xls files only</p>
               </div>

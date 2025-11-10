@@ -5,7 +5,6 @@ export default function Auth() {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [isSignUp, setIsSignUp] = useState(false)
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -14,14 +13,8 @@ export default function Auth() {
     setMessage(null)
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password })
-        if (error) throw error
-        setMessage({ type: 'success', text: 'Kolla din email för bekräftelselänk!' })
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message })
     } finally {
@@ -87,21 +80,9 @@ export default function Auth() {
               disabled={loading}
               className="w-full bg-primary-600 text-white py-3 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Laddar...' : isSignUp ? 'Skapa konto' : 'Logga in'}
+              {loading ? 'Laddar...' : 'Logga in'}
             </button>
           </form>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => {
-                setIsSignUp(!isSignUp)
-                setMessage(null)
-              }}
-              className="text-sm text-primary-600 hover:text-primary-700"
-            >
-              {isSignUp ? 'Har redan ett konto? Logga in' : 'Inget konto? Skapa ett'}
-            </button>
-          </div>
         </div>
       </div>
     </div>
