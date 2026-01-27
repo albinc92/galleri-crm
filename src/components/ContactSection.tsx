@@ -79,6 +79,20 @@ export default function ContactSection({ title, contact, onChange }: ContactSect
           />
         </div>
       </div>
+
+      {/* Erbjudanden checkbox */}
+      <div className="flex items-center gap-2 mt-3 p-3 bg-blue-50 rounded-lg">
+        <input
+          type="checkbox"
+          id={`erbjudanden-${title}`}
+          checked={(contact as any).erbjudanden || false}
+          onChange={(e) => onChange({ ...contact, erbjudanden: e.target.checked } as any)}
+          className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+        />
+        <label htmlFor={`erbjudanden-${title}`} className="text-sm font-medium text-gray-700">
+          ✉️ Skicka erbjudanden till denna kontakt
+        </label>
+      </div>
     </div>
   )
 }

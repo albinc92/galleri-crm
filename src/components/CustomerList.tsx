@@ -4,7 +4,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
 import ExcelUploader from './ExcelUploader'
-import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown } from 'lucide-react'
+import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter } from 'lucide-react'
 
 // Mock data will be loaded from localStorage or Excel upload
 
@@ -21,8 +21,12 @@ export default function CustomerList() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSortOpen, setIsSortOpen] = useState(false)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers'>('all')
+  const [showEmailExport, setShowEmailExport] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
+  const filterRef = useRef<HTMLDivElement>(null)
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -32,6 +36,9 @@ export default function CustomerList() {
       }
       if (sortRef.current && !sortRef.current.contains(event.target as Node)) {
         setIsSortOpen(false)
+      }
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -61,17 +68,66 @@ export default function CustomerList() {
     },
   })
 
-  const filteredCustomers = customers?.filter((customer: CustomerWithContacts) => {
+  // Apply active filter first
+  const preFilteredCustomers = customers?.filter((customer: CustomerWithContacts) => {
+    if (activeFilter === 'booked') {
+      return customer.bokat_besok === true
+    }
+    if (activeFilter === 'offers') {
+      return customer.contacts?.some(contact => (contact as any).erbjudanden === true)
+    }
+    return true
+  })
+
+  const filteredCustomers = preFilteredCustomers?.filter((customer: CustomerWithContacts) => {
     if (!searchTerm) return true
     
     const search = searchTerm.toLowerCase()
-    return (
+    
+    // Search in basic customer fields
+    const basicMatch = (
       customer.foretagsnamn?.toLowerCase().includes(search) ||
       String(customer.kundnr || '').toLowerCase().includes(search) ||
       customer.stad?.toLowerCase().includes(search) ||
-      customer.telefon?.toLowerCase().includes(search)
+      customer.telefon?.toLowerCase().includes(search) ||
+      customer.adress?.toLowerCase().includes(search) ||
+      customer.postnummer?.toLowerCase().includes(search) ||
+      customer.anteckningar?.toLowerCase().includes(search) ||
+      customer.aktiv?.toLowerCase().includes(search)
     )
+    
+    if (basicMatch) return true
+    
+    // Search in contacts (ordförande, kassör names, emails, phones)
+    const contactMatch = customer.contacts?.some(contact => 
+      contact.namn?.toLowerCase().includes(search) ||
+      contact.email?.toLowerCase().includes(search) ||
+      contact.telefon?.toLowerCase().includes(search) ||
+      contact.mobil?.toLowerCase().includes(search)
+    )
+    
+    if (contactMatch) return true
+    
+    // Search in sales (sold art description)
+    const salesMatch = customer.sales?.some(sale =>
+      sale.sald_konst?.toLowerCase().includes(search)
+    )
+    
+    return salesMatch || false
   })
+
+  // Get emails for export (contacts with erbjudanden checked)
+  const getOfferEmails = () => {
+    const emails: string[] = []
+    customers?.forEach(customer => {
+      customer.contacts?.forEach(contact => {
+        if ((contact as any).erbjudanden && contact.email) {
+          emails.push(contact.email)
+        }
+      })
+    })
+    return [...new Set(emails)] // Remove duplicates
+  }
 
   // Sort customers (create a copy to avoid mutating the original array)
   const sortedCustomers = filteredCustomers?.slice().sort((a: CustomerWithContacts, b: CustomerWithContacts) => {
@@ -275,6 +331,74 @@ export default function CustomerList() {
             </div>
           )}
         </div>
+
+        {/* Filter dropdown */}
+        <div className="relative" ref={filterRef}>
+          <button
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
+              activeFilter !== 'all'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Filter className="w-3 h-3" />
+            Filter
+            <ChevronDown className="w-3 h-3" />
+          </button>
+          {isFilterOpen && (
+            <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px]">
+              <button
+                onClick={() => {
+                  setActiveFilter('all')
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                  activeFilter === 'all' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                }`}
+              >
+                Alla kunder
+              </button>
+              <button
+                onClick={() => {
+                  setActiveFilter('booked')
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                  activeFilter === 'booked' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                Bokade besök
+              </button>
+              <button
+                onClick={() => {
+                  setActiveFilter('offers')
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                  activeFilter === 'offers' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                }`}
+              >
+                <Mail className="w-4 h-4" />
+                Erbjudanden
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Export emails button */}
+        <button
+          onClick={() => setShowEmailExport(true)}
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+          title="Exportera e-postadresser"
+        >
+          <Mail className="w-3 h-3" />
+          <span className="hidden sm:inline">E-post</span>
+        </button>
       </div>
 
       {/* Scrollable Customer Grid */}
@@ -382,6 +506,70 @@ export default function CustomerList() {
               onChange={(e) => handlePageChange(Number(e.target.value))}
               className="w-12 sm:w-14 px-1 sm:px-2 py-1 border border-gray-300 rounded text-xs text-center"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Email Export Modal */}
+      {showEmailExport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-lg w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-gray-900">
+                <Mail className="w-5 h-5 inline mr-2" />
+                E-postadresser för erbjudanden
+              </h2>
+              <button
+                onClick={() => setShowEmailExport(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            {(() => {
+              const emails = getOfferEmails()
+              return (
+                <>
+                  <p className="text-sm text-gray-600 mb-3">
+                    {emails.length} kontakter med erbjudanden markerat:
+                  </p>
+                  {emails.length > 0 ? (
+                    <>
+                      <textarea
+                        readOnly
+                        value={emails.join('; ')}
+                        className="w-full h-32 p-3 border border-gray-300 rounded-lg text-sm font-mono bg-gray-50"
+                      />
+                      <div className="flex gap-2 mt-4">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(emails.join('; '))
+                            alert('E-postadresser kopierade!')
+                          }}
+                          className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm"
+                        >
+                          Kopiera alla
+                        </button>
+                        <button
+                          onClick={() => {
+                            window.location.href = `mailto:?bcc=${emails.join(',')}`
+                          }}
+                          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                          Öppna e-post
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">
+                      Inga kontakter med erbjudanden markerat hittades.<br />
+                      <span className="text-sm">Markera "Erbjudanden" på kontakter i kundposterna.</span>
+                    </p>
+                  )}
+                </>
+              )
+            })()}
           </div>
         </div>
       )}

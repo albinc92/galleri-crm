@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts, Contact, Sale } from '../types'
 import ContactSection from './ContactSection'
 import SalesSection from './SalesSection'
@@ -24,22 +24,24 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
     anteckningar: '',
   })
 
-  const [ordforande, setOrdforande] = useState<Partial<Contact>>({
+  const [ordforande, setOrdforande] = useState<Partial<Contact> & { erbjudanden?: boolean }>({
     namn: '',
     telefon: '',
     mobil: '',
     email: '',
     senast_kontakt: '',
     aterkom: '',
+    erbjudanden: false,
   })
 
-  const [kassor, setKassor] = useState<Partial<Contact>>({
+  const [kassor, setKassor] = useState<Partial<Contact> & { erbjudanden?: boolean }>({
     namn: '',
     telefon: '',
     mobil: '',
     email: '',
     senast_kontakt: '',
     aterkom: '',
+    erbjudanden: false,
   })
 
   const [sales, setSales] = useState<Partial<Sale>[]>([
@@ -71,6 +73,7 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
           email: ordf.email || '',
           senast_kontakt: ordf.senast_kontakt || '',
           aterkom: ordf.aterkom || '',
+          erbjudanden: (ordf as any).erbjudanden || false,
         })
       }
 
@@ -82,6 +85,7 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
           email: kass.email || '',
           senast_kontakt: kass.senast_kontakt || '',
           aterkom: kass.aterkom || '',
+          erbjudanden: (kass as any).erbjudanden || false,
         })
       }
 
@@ -96,6 +100,47 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
     setLoading(true)
 
     try {
+      if (!isSupabaseConfigured || !supabase) {
+        // Demo mode - save to localStorage
+        const stored = localStorage.getItem('galleri-customers')
+        const customers: CustomerWithContacts[] = stored ? JSON.parse(stored) : []
+        
+        if (customer) {
+          // Update existing
+          const index = customers.findIndex(c => c.id === customer.id)
+          if (index !== -1) {
+            customers[index] = {
+              ...customers[index],
+              ...formData,
+              updated_at: new Date().toISOString(),
+              contacts: [
+                { ...ordforande, role: 'ordforande' as const, customer_id: customer.id, id: `${customer.id}-ord`, created_at: '', updated_at: '' },
+                { ...kassor, role: 'kassor' as const, customer_id: customer.id, id: `${customer.id}-kas`, created_at: '', updated_at: '' },
+              ].filter(c => c.namn),
+              sales: sales.filter(s => s.datum || s.belopp) as Sale[],
+            }
+          }
+        } else {
+          // Create new
+          const newId = `local-${Date.now()}`
+          customers.push({
+            id: newId,
+            ...formData,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            contacts: [
+              { ...ordforande, role: 'ordforande' as const, customer_id: newId, id: `${newId}-ord`, created_at: '', updated_at: '' },
+              { ...kassor, role: 'kassor' as const, customer_id: newId, id: `${newId}-kas`, created_at: '', updated_at: '' },
+            ].filter(c => c.namn),
+            sales: sales.filter(s => s.datum || s.belopp) as Sale[],
+          } as CustomerWithContacts)
+        }
+        
+        localStorage.setItem('galleri-customers', JSON.stringify(customers))
+        onClose()
+        return
+      }
+
       let customerId = customer?.id
 
       // Upsert customer
@@ -164,6 +209,16 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
 
     setLoading(true)
     try {
+      if (!isSupabaseConfigured || !supabase) {
+        // Demo mode - delete from localStorage
+        const stored = localStorage.getItem('galleri-customers')
+        const customers: CustomerWithContacts[] = stored ? JSON.parse(stored) : []
+        const filtered = customers.filter(c => c.id !== customer.id)
+        localStorage.setItem('galleri-customers', JSON.stringify(filtered))
+        onClose()
+        return
+      }
+
       const { error } = await supabase.from('customers').delete().eq('id', customer.id)
       if (error) throw error
       onClose()

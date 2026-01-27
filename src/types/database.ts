@@ -64,6 +64,7 @@ export interface Database {
           email: string | null
           senast_kontakt: string | null
           aterkom: string | null
+          erbjudanden: boolean
           created_at: string
           updated_at: string
         }
@@ -77,6 +78,7 @@ export interface Database {
           email?: string | null
           senast_kontakt?: string | null
           aterkom?: string | null
+          erbjudanden?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -90,6 +92,7 @@ export interface Database {
           email?: string | null
           senast_kontakt?: string | null
           aterkom?: string | null
+          erbjudanden?: boolean
           created_at?: string
           updated_at?: string
         }
