@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 
 interface ExcelUploaderProps {
   onUploadComplete: () => void
+  compact?: boolean
 }
 
 // Helper function to convert Excel date serial to ISO date string
@@ -48,7 +49,7 @@ const excelDateToISO = (serial: any): string | null => {
   return date.toISOString().split('T')[0] // Return YYYY-MM-DD
 }
 
-export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) {
+export default function ExcelUploader({ onUploadComplete, compact = false }: ExcelUploaderProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [status, setStatus] = useState<{
     type: 'success' | 'error' | 'progress' | null
@@ -317,12 +318,23 @@ export default function ExcelUploader({ onUploadComplete }: ExcelUploaderProps) 
   }
 
   if (!isOpen) {
+    if (compact) {
+      return (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="w-full flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          <Upload className="w-4 h-4" />
+          Import Excel
+        </button>
+      )
+    }
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
       >
-        <Upload className="w-5 h-5" />
+        <Upload className="w-4 h-4" />
         Import Excel
       </button>
     )

@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
 import ExcelUploader from './ExcelUploader'
-import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown } from 'lucide-react'
 
 // Mock data will be loaded from localStorage or Excel upload
 
@@ -19,6 +19,24 @@ export default function CustomerList() {
   const [itemsPerPage, setItemsPerPage] = useState(12)
   const [sortField, setSortField] = useState<SortField>('foretagsnamn')
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isSortOpen, setIsSortOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const sortRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false)
+      }
+      if (sortRef.current && !sortRef.current.contains(event.target as Node)) {
+        setIsSortOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const { data: customers, isLoading, refetch } = useQuery({
     queryKey: ['customers'],
@@ -133,244 +151,228 @@ export default function CustomerList() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header with Search and Buttons */}
-      <div className="flex flex-col sm:flex-row gap-3">
+    <div className="h-full flex flex-col">
+      {/* Header with Search and Actions */}
+      <div className="flex-shrink-0 flex gap-2 mb-3">
+        {/* Search */}
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="text"
-            placeholder="Sök företagsnamn, kundnr, stad..."
+            placeholder="Sök..."
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
-        <ExcelUploader onUploadComplete={refetch} />
-        <button
-          onClick={handleNewCustomer}
-          className="flex items-center justify-center gap-2 bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Ny Post
-        </button>
-      </div>
 
-      {/* Stats and Controls Bar */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex flex-col gap-4">
-          {/* Stats Row */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <span className="text-sm text-gray-600">
-              Visar {startIndex + 1}-{Math.min(endIndex, totalItems)} av {totalItems} kunder
-            </span>
-            
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Per sida:</span>
-              <select
-                value={itemsPerPage}
-                onChange={(e) => {
-                  setItemsPerPage(Number(e.target.value))
-                  setCurrentPage(1)
-                }}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
-              >
-                <option value={12}>12</option>
-                <option value={24}>24</option>
-                <option value={48}>48</option>
-                <option value={96}>96</option>
-              </select>
-            </div>
-          </div>
+        {/* Desktop buttons */}
+        <div className="hidden sm:flex gap-2">
+          <ExcelUploader onUploadComplete={refetch} />
+          <button
+            onClick={handleNewCustomer}
+            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Ny Post
+          </button>
+        </div>
 
-          {/* Sorting Row */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <span className="text-sm font-medium text-gray-700">Sortera:</span>
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-              <button
-                onClick={() => handleSort('foretagsnamn')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  sortField === 'foretagsnamn'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Företag {sortField === 'foretagsnamn' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </button>
-              <button
-                onClick={() => handleSort('kundnr')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  sortField === 'kundnr'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Kundnr {sortField === 'kundnr' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </button>
-              <button
-                onClick={() => handleSort('stad')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  sortField === 'stad'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Postadress {sortField === 'stad' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </button>
-              <button
-                onClick={() => handleSort('aktiv')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  sortField === 'aktiv'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Aktiv {sortField === 'aktiv' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </button>
+        {/* Mobile menu button */}
+        <div className="sm:hidden relative" ref={menuRef}>
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          {isMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px]">
               <button
                 onClick={() => {
-                  setSortField('foretagsnamn')
-                  setSortOrder('asc')
-                  setCurrentPage(1)
+                  handleNewCustomer()
+                  setIsMenuOpen(false)
                 }}
-                className="px-3 py-2 rounded-lg text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors col-span-2 sm:col-span-1"
+                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
               >
-                ✕ Rensa sortering
+                <Plus className="w-4 h-4" />
+                Ny Post
               </button>
+              <div className="border-t border-gray-100">
+                <ExcelUploader onUploadComplete={() => { refetch(); setIsMenuOpen(false) }} compact />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Customer Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Compact Controls Bar */}
+      <div className="flex-shrink-0 flex flex-wrap items-center gap-2 mb-3 text-xs sm:text-sm">
+        <span className="text-gray-500">
+          {startIndex + 1}-{Math.min(endIndex, totalItems)} / {totalItems}
+        </span>
+        
+        <select
+          value={itemsPerPage}
+          onChange={(e) => {
+            setItemsPerPage(Number(e.target.value))
+            setCurrentPage(1)
+          }}
+          className="px-2 py-1 border border-gray-300 rounded text-xs sm:text-sm bg-white"
+        >
+          <option value={12}>12</option>
+          <option value={24}>24</option>
+          <option value={48}>48</option>
+        </select>
+
+        {/* Sort dropdown */}
+        <div className="relative" ref={sortRef}>
+          <button
+            onClick={() => setIsSortOpen(!isSortOpen)}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
+              sortField !== 'foretagsnamn' || sortOrder !== 'asc'
+                ? 'bg-primary-100 text-primary-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Sortera
+            <ChevronDown className="w-3 h-3" />
+          </button>
+          {isSortOpen && (
+            <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[140px]">
+              {[
+                { field: 'foretagsnamn' as SortField, label: 'Företag' },
+                { field: 'kundnr' as SortField, label: 'Kundnr' },
+                { field: 'stad' as SortField, label: 'Postadress' },
+                { field: 'aktiv' as SortField, label: 'Aktiv' },
+              ].map(({ field, label }) => (
+                <button
+                  key={field}
+                  onClick={() => {
+                    handleSort(field)
+                    setIsSortOpen(false)
+                  }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                    sortField === field ? 'bg-primary-50 text-primary-700' : 'text-gray-700'
+                  }`}
+                >
+                  {label} {sortField === field && (sortOrder === 'asc' ? '↑' : '↓')}
+                </button>
+              ))}
+              <div className="border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    setSortField('foretagsnamn')
+                    setSortOrder('asc')
+                    setCurrentPage(1)
+                    setIsSortOpen(false)
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  ✕ Rensa
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Scrollable Customer Grid */}
+      <div className="flex-1 overflow-y-auto min-h-0 pb-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
         {paginatedCustomers?.map((customer: CustomerWithContacts) => (
           <div
             key={customer.id}
             onClick={() => handleEditCustomer(customer)}
-            className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer p-4 border border-gray-200"
+            className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer p-3 sm:p-4 border border-gray-200"
           >
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="font-semibold text-lg text-gray-900">{customer.foretagsnamn}</h3>
+            <div className="flex justify-between items-start mb-1 sm:mb-2">
+              <h3 className="font-semibold text-sm sm:text-lg text-gray-900 truncate flex-1 mr-2">{customer.foretagsnamn}</h3>
               <span
-                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium flex-shrink-0 ${
                   customer.aktiv ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                 }`}
               >
                 {customer.aktiv ? 'Aktiv' : 'Inaktiv'}
               </span>
             </div>
-            <div className="space-y-1 text-sm text-gray-600">
-              <p>📝 Kundnr: {customer.kundnr}</p>
-              {customer.stad && <p>📍 {customer.stad}</p>}
-              {customer.telefon && <p>📞 {customer.telefon}</p>}
+            <div className="space-y-0.5 text-xs sm:text-sm text-gray-600">
+              <p>📝 {customer.kundnr}</p>
+              {customer.stad && <p className="truncate">📍 {customer.stad}</p>}
               {customer.bokat_besok && (
-                <span className="inline-block mt-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                  ✓ Bokat besök
+                <span className="inline-block mt-1 px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
+                  ✓ Bokat
                 </span>
               )}
             </div>
           </div>
         ))}
+        </div>
+
+        {totalItems === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            {searchTerm ? (
+              <>Inga kunder hittades. Prova en annan sökning.</>
+            ) : (
+              <>
+                Inga kunder ännu. {(!isSupabaseConfigured || !supabase) && <>Klicka på "Import Excel" för att importera data eller </>}
+                klicka på "Ny Post" för att lägga till en ny kund.
+              </>
+            )}
+          </div>
+        )}
       </div>
 
-      {totalItems === 0 && (
-        <div className="text-center py-12 text-gray-500">
-          {searchTerm ? (
-            <>Inga kunder hittades. Prova en annan sökning.</>
-          ) : (
-            <>
-              Inga kunder ännu. {(!isSupabaseConfigured || !supabase) && <>Klicka på "Import Excel" för att importera data eller </>}
-              klicka på "Ny Post" för att lägga till en ny kund.
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Pagination */}
+      {/* Pagination - Fixed at bottom */}
       {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t">
-          <div className="text-sm text-gray-600">
-            Sida {currentPage} av {totalPages}
-          </div>
+        <div className="flex-shrink-0 bg-white border-t border-gray-200 pt-3 flex items-center justify-center gap-1 sm:gap-2">
+          {/* First Page */}
+          <button
+            onClick={() => handlePageChange(1)}
+            disabled={currentPage === 1}
+            className="p-1.5 sm:p-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Första sidan"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </button>
           
-          <div className="flex items-center gap-2">
-            {/* First Page */}
-            <button
-              onClick={() => handlePageChange(1)}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Första sidan"
-            >
-              <ChevronsLeft className="w-5 h-5" />
-            </button>
-            
-            {/* Previous Page */}
-            <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Föregående"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
+          {/* Previous Page */}
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="p-1.5 sm:p-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Föregående"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
 
-            {/* Page Numbers */}
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum: number
-                if (totalPages <= 5) {
-                  pageNum = i + 1
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i
-                } else {
-                  pageNum = currentPage - 2 + i
-                }
+          {/* Page indicator */}
+          <span className="px-2 text-xs sm:text-sm text-gray-600">
+            {currentPage} / {totalPages}
+          </span>
 
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => handlePageChange(pageNum)}
-                    className={`px-3 py-2 rounded-lg transition-colors ${
-                      currentPage === pageNum
-                        ? 'bg-primary-600 text-white'
-                        : 'border border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                )
-              })}
-            </div>
+          {/* Next Page */}
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="p-1.5 sm:p-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Nästa"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
 
-            {/* Next Page */}
-            <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Nästa"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-
-            {/* Last Page */}
-            <button
-              onClick={() => handlePageChange(totalPages)}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Sista sidan"
-            >
-              <ChevronsRight className="w-5 h-5" />
-            </button>
-          </div>
+          {/* Last Page */}
+          <button
+            onClick={() => handlePageChange(totalPages)}
+            disabled={currentPage === totalPages}
+            className="p-1.5 sm:p-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Sista sidan"
+          >
+            <ChevronsRight className="w-4 h-4" />
+          </button>
 
           {/* Jump to Page */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="jump-to-page" className="text-sm text-gray-600">
-              Gå till:
-            </label>
+          <div className="flex items-center gap-1 ml-2">
             <input
               id="jump-to-page"
               type="number"
@@ -378,7 +380,7 @@ export default function CustomerList() {
               max={totalPages}
               value={currentPage}
               onChange={(e) => handlePageChange(Number(e.target.value))}
-              className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-sm text-center"
+              className="w-12 sm:w-14 px-1 sm:px-2 py-1 border border-gray-300 rounded text-xs text-center"
             />
           </div>
         </div>
