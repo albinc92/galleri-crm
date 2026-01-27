@@ -114,9 +114,9 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
               ...formData,
               updated_at: new Date().toISOString(),
               contacts: [
-                { ...ordforande, role: 'ordforande' as const, customer_id: customer.id, id: `${customer.id}-ord`, created_at: '', updated_at: '' },
-                { ...kassor, role: 'kassor' as const, customer_id: customer.id, id: `${customer.id}-kas`, created_at: '', updated_at: '' },
-              ].filter(c => c.namn),
+                { ...ordforande, role: 'ordforande' as const, customer_id: customer.id, id: `${customer.id}-ord`, created_at: '', updated_at: '', namn: ordforande.namn || null, telefon: ordforande.telefon || null, mobil: ordforande.mobil || null, email: ordforande.email || null, senast_kontakt: ordforande.senast_kontakt || null, aterkom: ordforande.aterkom || null, erbjudanden: ordforande.erbjudanden || false },
+                { ...kassor, role: 'kassor' as const, customer_id: customer.id, id: `${customer.id}-kas`, created_at: '', updated_at: '', namn: kassor.namn || null, telefon: kassor.telefon || null, mobil: kassor.mobil || null, email: kassor.email || null, senast_kontakt: kassor.senast_kontakt || null, aterkom: kassor.aterkom || null, erbjudanden: kassor.erbjudanden || false },
+              ].filter(c => c.namn) as any,
               sales: sales.filter(s => s.datum || s.belopp) as Sale[],
             }
           }
@@ -129,9 +129,9 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             contacts: [
-              { ...ordforande, role: 'ordforande' as const, customer_id: newId, id: `${newId}-ord`, created_at: '', updated_at: '' },
-              { ...kassor, role: 'kassor' as const, customer_id: newId, id: `${newId}-kas`, created_at: '', updated_at: '' },
-            ].filter(c => c.namn),
+              { ...ordforande, role: 'ordforande' as const, customer_id: newId, id: `${newId}-ord`, created_at: '', updated_at: '', namn: ordforande.namn || null, telefon: ordforande.telefon || null, mobil: ordforande.mobil || null, email: ordforande.email || null, senast_kontakt: ordforande.senast_kontakt || null, aterkom: ordforande.aterkom || null, erbjudanden: ordforande.erbjudanden || false },
+              { ...kassor, role: 'kassor' as const, customer_id: newId, id: `${newId}-kas`, created_at: '', updated_at: '', namn: kassor.namn || null, telefon: kassor.telefon || null, mobil: kassor.mobil || null, email: kassor.email || null, senast_kontakt: kassor.senast_kontakt || null, aterkom: kassor.aterkom || null, erbjudanden: kassor.erbjudanden || false },
+            ].filter(c => c.namn) as any,
             sales: sales.filter(s => s.datum || s.belopp) as Sale[],
           } as CustomerWithContacts)
         }
