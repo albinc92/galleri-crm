@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as XLSX from 'xlsx'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
 import ExcelUploader from './ExcelUploader'
-import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter, RefreshCw } from 'lucide-react'
+import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter, RefreshCw, Download, Trash2, RotateCcw } from 'lucide-react'
 
 // Mock data will be loaded from localStorage or Excel upload
 
@@ -24,11 +25,13 @@ export default function CustomerList() {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers'>('all')
   const [showEmailExport, setShowEmailExport] = useState(false)
+  const [showTrash, setShowTrash] = useState(false)
   const [realtimeUpdate, setRealtimeUpdate] = useState<{ type: string; id: string; timestamp: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  const recentLocalChanges = useRef<Set<string>>(new Set())
 
   // Real-time subscription for live updates
   useEffect(() => {
@@ -44,13 +47,23 @@ export default function CustomerList() {
         (payload: any) => {
           console.log('🔴 Realtime update received:', payload)
           
-          // Show notification about the update
+          const recordId = payload.new?.id || payload.old?.id
+          
+          // Skip notification if this was a local change
+          if (recentLocalChanges.current.has(recordId)) {
+            console.log('Skipping notification for local change')
+            recentLocalChanges.current.delete(recordId)
+            queryClient.invalidateQueries({ queryKey: ['customers'] })
+            return
+          }
+          
+          // Show notification about the update from another user
           const eventType = payload.eventType === 'INSERT' ? 'skapad' : 
                            payload.eventType === 'UPDATE' ? 'uppdaterad' : 'raderad'
           
           setRealtimeUpdate({
             type: eventType,
-            id: payload.new?.id || payload.old?.id,
+            id: recordId,
             timestamp: Date.now()
           })
           
@@ -104,7 +117,7 @@ export default function CustomerList() {
   }, [])
 
   const { data: customers, isLoading, refetch } = useQuery({
-    queryKey: ['customers'],
+    queryKey: ['customers', showTrash],
     queryFn: async () => {
       if (!isSupabaseConfigured || !supabase) {
         // Return data from localStorage in demo mode
@@ -112,14 +125,23 @@ export default function CustomerList() {
         return stored ? JSON.parse(stored) as CustomerWithContacts[] : []
       }
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('customers')
         .select(`
           *,
           contacts(*),
           sales(*)
         `)
-        .order('foretagsnamn')
+      
+      if (showTrash) {
+        // Show only deleted records
+        query = query.not('deleted_at', 'is', null)
+      } else {
+        // Exclude soft-deleted records
+        query = query.is('deleted_at', null)
+      }
+      
+      const { data, error } = await query.order('foretagsnamn')
 
       if (error) throw error
       return data as CustomerWithContacts[]
@@ -260,6 +282,134 @@ export default function CustomerList() {
     refetch()
   }
 
+  // Export all data to Excel
+  const exportToExcel = () => {
+    if (!customers || customers.length === 0) {
+      alert('Ingen data att exportera')
+      return
+    }
+
+    // Flatten customer data for Excel
+    const exportData = customers.map((customer: CustomerWithContacts) => {
+      const ordforande = customer.contacts?.find(c => c.role === 'ordforande')
+      const kassor = customer.contacts?.find(c => c.role === 'kassor')
+      const totalSales = customer.sales?.reduce((sum, s) => sum + (Number(s.belopp) || 0), 0) || 0
+
+      return {
+        'Kundnr': customer.kundnr,
+        'Företagsnamn': customer.foretagsnamn,
+        'Aktiv': customer.aktiv,
+        'Adress': customer.adress || '',
+        'Postnummer': customer.postnummer || '',
+        'Stad': customer.stad || '',
+        'Telefon': customer.telefon || '',
+        'Bokat Besök': customer.bokat_besok ? 'Ja' : 'Nej',
+        'Anteckningar': customer.anteckningar || '',
+        // Ordförande
+        'Ordförande Namn': ordforande?.namn || '',
+        'Ordförande Telefon': ordforande?.telefon || '',
+        'Ordförande Mobil': ordforande?.mobil || '',
+        'Ordförande Email': ordforande?.email || '',
+        'Ordförande Senast Kontakt': ordforande?.senast_kontakt || '',
+        'Ordförande Återkom': ordforande?.aterkom || '',
+        'Ordförande Erbjudanden': (ordforande as any)?.erbjudanden ? 'Ja' : 'Nej',
+        // Kassör
+        'Kassör Namn': kassor?.namn || '',
+        'Kassör Telefon': kassor?.telefon || '',
+        'Kassör Mobil': kassor?.mobil || '',
+        'Kassör Email': kassor?.email || '',
+        'Kassör Senast Kontakt': kassor?.senast_kontakt || '',
+        'Kassör Återkom': kassor?.aterkom || '',
+        'Kassör Erbjudanden': (kassor as any)?.erbjudanden ? 'Ja' : 'Nej',
+        // Sales summary
+        'Antal Försäljningar': customer.sales?.length || 0,
+        'Total Försäljning': totalSales,
+      }
+    })
+
+    // Create workbook with main data sheet
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(exportData)
+    
+    // Auto-width columns
+    const colWidths = Object.keys(exportData[0] || {}).map(key => ({
+      wch: Math.max(key.length, 15)
+    }))
+    ws['!cols'] = colWidths
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Kunder')
+
+    // Create sales detail sheet
+    const salesData: any[] = []
+    customers.forEach((customer: CustomerWithContacts) => {
+      customer.sales?.forEach(sale => {
+        salesData.push({
+          'Kundnr': customer.kundnr,
+          'Företagsnamn': customer.foretagsnamn,
+          'Datum': sale.datum,
+          'Belopp': sale.belopp,
+          'Såld Konst': sale.sald_konst || '',
+        })
+      })
+    })
+
+    if (salesData.length > 0) {
+      const salesWs = XLSX.utils.json_to_sheet(salesData)
+      XLSX.utils.book_append_sheet(wb, salesWs, 'Försäljningar')
+    }
+
+    // Generate filename with date
+    const date = new Date().toISOString().split('T')[0]
+    const filename = `Galleri_Export_${date}.xlsx`
+
+    // Download
+    XLSX.writeFile(wb, filename)
+  }
+
+  // Restore a soft-deleted customer
+  const restoreCustomer = async (customerId: string) => {
+    if (!isSupabaseConfigured || !supabase) return
+    
+    // Mark as local change
+    recentLocalChanges.current.add(customerId)
+    setTimeout(() => recentLocalChanges.current.delete(customerId), 3000)
+    
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ deleted_at: null })
+        .eq('id', customerId)
+      
+      if (error) throw error
+      refetch()
+    } catch (err: any) {
+      alert('Kunde inte återställa: ' + err.message)
+    }
+  }
+
+  // Permanently delete a customer
+  const permanentlyDelete = async (customerId: string) => {
+    if (!isSupabaseConfigured || !supabase) return
+    
+    if (!confirm('Är du säker? Detta går inte att ångra!')) return
+    
+    // Mark as local change
+    recentLocalChanges.current.add(customerId)
+    setTimeout(() => recentLocalChanges.current.delete(customerId), 3000)
+    
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerId)
+      
+      if (error) throw error
+      refetch()
+    } catch (err: any) {
+      alert('Kunde inte radera: ' + err.message)
+    }
+  }
+
   if (isLoading) {
     return <div className="text-center py-8">Laddar kunder...</div>
   }
@@ -290,7 +440,27 @@ export default function CustomerList() {
 
         {/* Desktop buttons */}
         <div className="hidden sm:flex gap-2">
+          <button
+            onClick={() => setShowTrash(!showTrash)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm border ${
+              showTrash 
+                ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100' 
+                : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+            }`}
+            title={showTrash ? 'Visa aktiva kunder' : 'Visa papperskorg'}
+          >
+            <Trash2 className="w-4 h-4" />
+            {showTrash ? 'Visa Aktiva' : 'Papperskorg'}
+          </button>
           <ExcelUploader onUploadComplete={refetch} />
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm border border-gray-300"
+            title="Exportera data till Excel"
+          >
+            <Download className="w-4 h-4" />
+            Exportera
+          </button>
           <button
             onClick={handleNewCustomer}
             className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors text-sm"
@@ -322,6 +492,30 @@ export default function CustomerList() {
               </button>
               <div className="border-t border-gray-100">
                 <ExcelUploader onUploadComplete={() => { refetch(); setIsMenuOpen(false) }} compact />
+              </div>
+              <div className="border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    exportToExcel()
+                    setIsMenuOpen(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportera Data
+                </button>
+              </div>
+              <div className="border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    setShowTrash(!showTrash)
+                    setIsMenuOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-gray-50 ${showTrash ? 'text-red-600' : 'text-gray-700'}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {showTrash ? 'Visa Aktiva' : 'Papperskorg'}
+                </button>
               </div>
             </div>
           )}
@@ -469,39 +663,91 @@ export default function CustomerList() {
 
       {/* Scrollable Customer Grid */}
       <div className="flex-1 overflow-y-auto min-h-0 pb-2">
+        {/* Trash mode banner */}
+        {showTrash && (
+          <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-800">
+            <Trash2 className="w-4 h-4" />
+            <span>Du visar raderade kunder. Klicka för att återställa eller ta bort permanent.</span>
+          </div>
+        )}
+        
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
         {paginatedCustomers?.map((customer: CustomerWithContacts) => (
           <div
             key={customer.id}
-            onClick={() => handleEditCustomer(customer)}
-            className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer p-3 sm:p-4 border border-gray-200"
+            className={`bg-white rounded-lg shadow-sm transition-shadow p-3 sm:p-4 border ${
+              showTrash ? 'border-red-200 bg-red-50/30' : 'border-gray-200 hover:shadow-md cursor-pointer'
+            }`}
+            onClick={() => !showTrash && handleEditCustomer(customer)}
           >
             <div className="flex justify-between items-start mb-1 sm:mb-2">
-              <h3 className="font-semibold text-sm sm:text-lg text-gray-900 truncate flex-1 mr-2">{customer.foretagsnamn}</h3>
-              <span
-                className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium flex-shrink-0 ${
-                  customer.aktiv ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                }`}
-              >
-                {customer.aktiv ? 'Aktiv' : 'Inaktiv'}
-              </span>
+              <h3 className={`font-semibold text-sm sm:text-lg truncate flex-1 mr-2 ${showTrash ? 'text-gray-500' : 'text-gray-900'}`}>
+                {customer.foretagsnamn}
+              </h3>
+              {!showTrash && (
+                <span
+                  className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium flex-shrink-0 ${
+                    customer.aktiv ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  {customer.aktiv ? 'Aktiv' : 'Inaktiv'}
+                </span>
+              )}
+              {showTrash && (
+                <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium flex-shrink-0 bg-red-100 text-red-800">
+                  Raderad
+                </span>
+              )}
             </div>
             <div className="space-y-0.5 text-xs sm:text-sm text-gray-600">
               <p>📝 {customer.kundnr}</p>
               {customer.stad && <p className="truncate">📍 {customer.stad}</p>}
-              {customer.bokat_besok && (
+              {!showTrash && customer.bokat_besok && (
                 <span className="inline-block mt-1 px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
                   ✓ Bokat
                 </span>
               )}
+              {showTrash && (customer as any).deleted_at && (
+                <p className="text-red-600 text-xs mt-1">
+                  Raderad: {new Date((customer as any).deleted_at).toLocaleDateString('sv-SE')}
+                </p>
+              )}
             </div>
+            
+            {/* Trash actions */}
+            {showTrash && (
+              <div className="flex gap-2 mt-3 pt-2 border-t border-red-200">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    restoreCustomer(customer.id)
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Återställ
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    permanentlyDelete(customer.id)
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  Ta Bort
+                </button>
+              </div>
+            )}
           </div>
         ))}
         </div>
 
         {totalItems === 0 && (
           <div className="text-center py-12 text-gray-500">
-            {searchTerm ? (
+            {showTrash ? (
+              <>Papperskorgen är tom.</>
+            ) : searchTerm ? (
               <>Inga kunder hittades. Prova en annan sökning.</>
             ) : (
               <>
@@ -659,6 +905,11 @@ export default function CustomerList() {
               <CustomerForm
                 customer={selectedCustomer}
                 onClose={handleCloseForm}
+                onLocalChange={(id: string) => {
+                  recentLocalChanges.current.add(id)
+                  // Clean up after 3 seconds in case realtime event doesn't fire
+                  setTimeout(() => recentLocalChanges.current.delete(id), 3000)
+                }}
               />
             </div>
           </div>

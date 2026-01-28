@@ -8,9 +8,10 @@ import { Save, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
 interface CustomerFormProps {
   customer: CustomerWithContacts | null
   onClose: () => void
+  onLocalChange?: (id: string) => void
 }
 
-export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
+export default function CustomerForm({ customer, onClose, onLocalChange }: CustomerFormProps) {
   const [loading, setLoading] = useState(false)
   const [isStale, setIsStale] = useState(false)
   const [staleMessage, setStaleMessage] = useState('')
@@ -324,6 +325,11 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
         // In production, you'd want to handle individual sale updates
       }
 
+      // Mark as local change to prevent self-notification
+      if (customerId && onLocalChange) {
+        onLocalChange(customerId)
+      }
+
       onClose()
     } catch (error: any) {
       alert('Fel: ' + error.message)
@@ -347,8 +353,18 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
         return
       }
 
-      const { error } = await supabase.from('customers').delete().eq('id', customer.id)
+      // Soft delete - set deleted_at instead of actually deleting
+      const { error } = await supabase
+        .from('customers')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', customer.id)
       if (error) throw error
+      
+      // Mark as local change to prevent self-notification
+      if (onLocalChange) {
+        onLocalChange(customer.id)
+      }
+      
       onClose()
     } catch (error: any) {
       alert('Fel: ' + error.message)
