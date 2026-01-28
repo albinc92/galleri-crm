@@ -123,6 +123,44 @@ export interface Database {
           created_at?: string
         }
       }
+      audit_logs: {
+        Row: {
+          id: string
+          user_id: string | null
+          user_email: string | null
+          table_name: string
+          record_id: string
+          action: 'INSERT' | 'UPDATE' | 'DELETE' | 'RESTORE'
+          old_data: Record<string, unknown> | null
+          new_data: Record<string, unknown> | null
+          changed_fields: string[] | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          user_email?: string | null
+          table_name: string
+          record_id: string
+          action: 'INSERT' | 'UPDATE' | 'DELETE' | 'RESTORE'
+          old_data?: Record<string, unknown> | null
+          new_data?: Record<string, unknown> | null
+          changed_fields?: string[] | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          user_email?: string | null
+          table_name?: string
+          record_id?: string
+          action?: 'INSERT' | 'UPDATE' | 'DELETE' | 'RESTORE'
+          old_data?: Record<string, unknown> | null
+          new_data?: Record<string, unknown> | null
+          changed_fields?: string[] | null
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

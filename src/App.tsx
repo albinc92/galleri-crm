@@ -3,10 +3,12 @@ import { supabase, isSupabaseConfigured } from './lib/supabase'
 import { Session } from '@supabase/supabase-js'
 import Auth from './components/Auth'
 import CustomerList from './components/CustomerList'
+import AuditLogViewer from './components/AuditLogViewer'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showAuditLog, setShowAuditLog] = useState(false)
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -77,17 +79,31 @@ function App() {
       <header className="bg-white shadow-sm flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900">🎨 Galleri CRM</h1>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="text-sm text-gray-600 hover:text-gray-900"
-          >
-            Logga ut
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setShowAuditLog(true)}
+              className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+              title="Visa ändringshistorik"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              Historik
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              Logga ut
+            </button>
+          </div>
         </div>
       </header>
       <main className="flex-1 overflow-hidden max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
         <CustomerList />
       </main>
+      <AuditLogViewer isOpen={showAuditLog} onClose={() => setShowAuditLog(false)} />
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { Database } from './database'
 export type Customer = Database['public']['Tables']['customers']['Row']
 export type Contact = Database['public']['Tables']['contacts']['Row']
 export type Sale = Database['public']['Tables']['sales']['Row']
+export type AuditLog = Database['public']['Tables']['audit_logs']['Row']
 
 export type CustomerInsert = Database['public']['Tables']['customers']['Insert']
 export type ContactInsert = Database['public']['Tables']['contacts']['Insert']
