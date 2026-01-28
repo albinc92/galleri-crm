@@ -15,8 +15,6 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   old_data JSONB,
   new_data JSONB,
   changed_fields TEXT[],
-  ip_address TEXT,
-  user_agent TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -45,7 +43,13 @@ DECLARE
   new_data JSONB;
   changed TEXT[];
   key TEXT;
+  current_user_id UUID;
+  current_user_email TEXT;
 BEGIN
+  -- Get current user from Supabase auth context
+  current_user_id := auth.uid();
+  current_user_email := auth.jwt() ->> 'email';
+
   IF TG_OP = 'DELETE' THEN
     old_data := to_jsonb(OLD);
     new_data := NULL;
@@ -65,6 +69,8 @@ BEGIN
   END IF;
 
   INSERT INTO audit_logs (
+    user_id,
+    user_email,
     table_name,
     record_id,
     action,
@@ -72,6 +78,8 @@ BEGIN
     new_data,
     changed_fields
   ) VALUES (
+    current_user_id,
+    current_user_email,
     TG_TABLE_NAME,
     COALESCE(NEW.id, OLD.id),
     TG_OP,
