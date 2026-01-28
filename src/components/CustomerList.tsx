@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
 import ExcelUploader from './ExcelUploader'
-import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter } from 'lucide-react'
+import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter, RefreshCw } from 'lucide-react'
 
 // Mock data will be loaded from localStorage or Excel upload
 
@@ -24,9 +24,67 @@ export default function CustomerList() {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers'>('all')
   const [showEmailExport, setShowEmailExport] = useState(false)
+  const [realtimeUpdate, setRealtimeUpdate] = useState<{ type: string; id: string; timestamp: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
+
+  // Real-time subscription for live updates
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return
+
+    console.log('Setting up realtime subscription...')
+    
+    const channel = supabase
+      .channel('customers-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'customers' },
+        (payload: any) => {
+          console.log('🔴 Realtime update received:', payload)
+          
+          // Show notification about the update
+          const eventType = payload.eventType === 'INSERT' ? 'skapad' : 
+                           payload.eventType === 'UPDATE' ? 'uppdaterad' : 'raderad'
+          
+          setRealtimeUpdate({
+            type: eventType,
+            id: payload.new?.id || payload.old?.id,
+            timestamp: Date.now()
+          })
+          
+          // Refetch the customers list
+          queryClient.invalidateQueries({ queryKey: ['customers'] })
+          
+          // Clear notification after 5 seconds
+          setTimeout(() => setRealtimeUpdate(null), 5000)
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'contacts' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['customers'] })
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sales' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['customers'] })
+        }
+      )
+      .subscribe((status: string, err?: Error) => {
+        console.log('📡 Realtime subscription status:', status)
+        if (err) console.error('Realtime error:', err)
+      })
+
+    return () => {
+      console.log('Cleaning up realtime subscription')
+      supabase.removeChannel(channel)
+    }
+  }, [queryClient])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -208,6 +266,14 @@ export default function CustomerList() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Real-time update notification */}
+      {realtimeUpdate && (
+        <div className="flex-shrink-0 mb-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-800 animate-pulse">
+          <RefreshCw className="w-4 h-4" />
+          <span>En kund har blivit {realtimeUpdate.type} av en annan användare. Listan uppdaterades automatiskt.</span>
+        </div>
+      )}
+
       {/* Header with Search and Actions */}
       <div className="flex-shrink-0 flex gap-2 mb-3">
         {/* Search */}

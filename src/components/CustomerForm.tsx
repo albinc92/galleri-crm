@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts, Contact, Sale } from '../types'
 import ContactSection from './ContactSection'
 import SalesSection from './SalesSection'
-import { Save, Trash2 } from 'lucide-react'
+import { Save, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
 
 interface CustomerFormProps {
   customer: CustomerWithContacts | null
@@ -12,6 +12,9 @@ interface CustomerFormProps {
 
 export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
   const [loading, setLoading] = useState(false)
+  const [isStale, setIsStale] = useState(false)
+  const [staleMessage, setStaleMessage] = useState('')
+  const originalUpdatedAt = useRef<string | null>(null)
   const [formData, setFormData] = useState({
     kundnr: '',
     aktiv: 'NEJ',
@@ -47,6 +50,117 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
   const [sales, setSales] = useState<Partial<Sale>[]>([
     { datum: '', belopp: 0, sald_konst: '' },
   ])
+  const [reloading, setReloading] = useState(false)
+
+  // Reload customer data from database
+  const reloadCustomerData = useCallback(async () => {
+    if (!customer || !isSupabaseConfigured || !supabase) return
+    
+    setReloading(true)
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select(`
+          *,
+          contacts (*),
+          sales (*)
+        `)
+        .eq('id', customer.id)
+        .single()
+      
+      if (error) throw error
+      
+      if (data) {
+        // Update form with fresh data
+        setFormData({
+          kundnr: data.kundnr,
+          aktiv: data.aktiv,
+          foretagsnamn: data.foretagsnamn,
+          adress: data.adress || '',
+          postnummer: data.postnummer || '',
+          stad: data.stad || '',
+          telefon: data.telefon || '',
+          bokat_besok: data.bokat_besok,
+          anteckningar: data.anteckningar || '',
+        })
+
+        const ordf = data.contacts?.find((c: any) => c.role === 'ordforande')
+        const kass = data.contacts?.find((c: any) => c.role === 'kassor')
+
+        setOrdforande({
+          namn: ordf?.namn || '',
+          telefon: ordf?.telefon || '',
+          mobil: ordf?.mobil || '',
+          email: ordf?.email || '',
+          senast_kontakt: ordf?.senast_kontakt || '',
+          aterkom: ordf?.aterkom || '',
+          erbjudanden: ordf?.erbjudanden || false,
+        })
+
+        setKassor({
+          namn: kass?.namn || '',
+          telefon: kass?.telefon || '',
+          mobil: kass?.mobil || '',
+          email: kass?.email || '',
+          senast_kontakt: kass?.senast_kontakt || '',
+          aterkom: kass?.aterkom || '',
+          erbjudanden: kass?.erbjudanden || false,
+        })
+
+        if (data.sales && data.sales.length > 0) {
+          setSales(data.sales)
+        } else {
+          setSales([{ datum: '', belopp: 0, sald_konst: '' }])
+        }
+
+        // Update the reference timestamp and clear stale state
+        originalUpdatedAt.current = data.updated_at
+        setIsStale(false)
+        setStaleMessage('')
+      }
+    } catch (err) {
+      console.error('Failed to reload customer:', err)
+      alert('Kunde inte ladda om data. Försök igen.')
+    } finally {
+      setReloading(false)
+    }
+  }, [customer])
+
+  // Store original updated_at for conflict detection
+  useEffect(() => {
+    if (customer) {
+      originalUpdatedAt.current = customer.updated_at
+    }
+  }, [customer])
+
+  // Real-time subscription to detect changes while editing
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase || !customer) return
+
+    const channel = supabase
+      .channel(`customer-${customer.id}`)
+      .on(
+        'postgres_changes',
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'customers',
+          filter: `id=eq.${customer.id}`
+        },
+        (payload: any) => {
+          // Someone else updated this customer
+          if (payload.new.updated_at !== originalUpdatedAt.current) {
+            setIsStale(true)
+            setStaleMessage(`Denna kund uppdaterades av en annan användare kl ${new Date(payload.new.updated_at).toLocaleTimeString('sv-SE')}`)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [customer])
 
   useEffect(() => {
     if (customer) {
@@ -97,6 +211,20 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Check for stale data before saving
+    if (isStale) {
+      const confirmSave = confirm(
+        'Varning: Denna kund har uppdaterats av en annan användare. ' +
+        'Vill du skriva över deras ändringar med dina?\n\n' +
+        'Klicka OK för att spara dina ändringar, eller Avbryt för att ladda om sidan.'
+      )
+      if (!confirmSave) {
+        onClose()
+        return
+      }
+    }
+    
     setLoading(true)
 
     try {
@@ -231,6 +359,31 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Stale data warning - fixed center screen */}
+      {isStale && (
+        <div className="fixed inset-0 flex items-center justify-center z-[100] pointer-events-none">
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-start gap-3 shadow-xl max-w-md pointer-events-auto">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-amber-800">Data har ändrats</p>
+              <p className="text-sm text-amber-700">{staleMessage}</p>
+              <p className="text-sm text-amber-600 mt-1">
+                Om du sparar kommer dina ändringar att skriva över de andra.
+              </p>
+              <button
+                type="button"
+                onClick={reloadCustomerData}
+                disabled={reloading}
+                className="mt-2 text-sm text-amber-800 underline hover:text-amber-900 inline-flex items-center gap-1"
+              >
+                <RefreshCw className={`w-3 h-3 ${reloading ? 'animate-spin' : ''}`} />
+                {reloading ? 'Laddar om...' : 'Ladda om för att se senaste versionen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Basic Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
