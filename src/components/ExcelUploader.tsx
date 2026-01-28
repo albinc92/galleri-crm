@@ -51,6 +51,7 @@ const excelDateToISO = (serial: any): string | null => {
 
 export default function ExcelUploader({ onUploadComplete, compact = false }: ExcelUploaderProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [status, setStatus] = useState<{
     type: 'success' | 'error' | 'progress' | null
     message: string
@@ -58,10 +59,24 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const [errors, setErrors] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cancelRef = useRef(false)
+
+  // Cancel upload when modal closes
+  const handleClose = () => {
+    if (isUploading) {
+      cancelRef.current = true
+    }
+    setIsOpen(false)
+    setStatus({ type: null, message: '' })
+    setIsUploading(false)
+  }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    cancelRef.current = false
+    setIsUploading(true)
 
     try {
       const data = await file.arrayBuffer()
@@ -176,6 +191,16 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
       })
 
       for (let i = 0; i < customers.length; i++) {
+        // Check if cancelled
+        if (cancelRef.current) {
+          setStatus({
+            type: 'error',
+            message: `Import avbruten. ${successCount} kunder importerades.`,
+          })
+          setIsUploading(false)
+          return
+        }
+        
         const customer = customers[i]
         try {
           // Update progress
@@ -263,6 +288,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
 
       // Set collected errors
       setErrors(errorMessages)
+      setIsUploading(false)
 
       if (errorCount === 0) {
         setStatus({
@@ -284,10 +310,10 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
       // Notify parent and close after delay
       setTimeout(() => {
         onUploadComplete()
-        setIsOpen(false)
-        setStatus({ type: null, message: '' })
+        handleClose()
       }, 2000)
     } catch (error: any) {
+      setIsUploading(false)
       setStatus({
         type: 'error',
         message: `❌ Error importing file: ${error.message}`,
@@ -308,8 +334,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
         })
         setTimeout(() => {
           onUploadComplete()
-          setIsOpen(false)
-          setStatus({ type: null, message: '' })
+          handleClose()
         }, 1500)
       } catch (error: any) {
         setStatus({
@@ -349,7 +374,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-900">Import Customer Data</h2>
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
           >
             <X className="w-6 h-6" />
@@ -453,10 +478,10 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
               Clear all data
             </button>
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={handleClose}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              Close
+              {isUploading ? 'Avbryt' : 'Close'}
             </button>
           </div>
         </div>
