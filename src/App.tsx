@@ -4,6 +4,7 @@ import { Session } from '@supabase/supabase-js'
 import Auth from './components/Auth'
 import CustomerList from './components/CustomerList'
 import AuditLogViewer from './components/AuditLogViewer'
+import BackupReminder from './components/BackupReminder'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -104,6 +105,7 @@ function App() {
         <CustomerList />
       </main>
       <AuditLogViewer isOpen={showAuditLog} onClose={() => setShowAuditLog(false)} />
+      <BackupReminder />
     </div>
   )
 }

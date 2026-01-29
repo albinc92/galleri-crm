@@ -22,12 +22,41 @@ const TABLE_LABELS: Record<string, string> = {
   sales: 'Försäljning',
 }
 
+// Field labels for Swedish display
+const FIELD_LABELS: Record<string, string> = {
+  foretagsnamn: 'Företagsnamn',
+  kundnr: 'Kundnr',
+  aktiv: 'Aktiv',
+  adress: 'Adress',
+  postnummer: 'Postnummer',
+  stad: 'Stad',
+  telefon: 'Telefon',
+  bokat_besok: 'Bokat besök',
+  anteckningar: 'Anteckningar',
+  deleted_at: 'Raderad',
+  namn: 'Namn',
+  email: 'E-post',
+  mobil: 'Mobil',
+  role: 'Roll',
+  senast_kontakt: 'Senast kontakt',
+  aterkom: 'Återkom',
+  erbjudanden: 'Erbjudanden',
+  datum: 'Datum',
+  belopp: 'Belopp',
+  sald_konst: 'Såld konst',
+}
+
 export default function AuditLogViewer({ isOpen, onClose }: AuditLogViewerProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [expandedLog, setExpandedLog] = useState<string | null>(null)
   const [filterTable, setFilterTable] = useState<string>('all')
   const [filterAction, setFilterAction] = useState<string>('all')
   const itemsPerPage = 20
+
+  // Helper to get field label
+  const getFieldLabel = (field: string): string => {
+    return FIELD_LABELS[field] || field
+  }
 
   // Reset page when filters change
   useEffect(() => {
@@ -97,27 +126,49 @@ export default function AuditLogViewer({ isOpen, onClose }: AuditLogViewerProps)
     if (!log.changed_fields || log.changed_fields.length === 0) return null
     if (!log.old_data || !log.new_data) return null
 
+    // Helper to format values for display
+    const formatValue = (value: any): string => {
+      if (value === null || value === undefined) return '(tom)'
+      if (value === true) return 'Ja'
+      if (value === false) return 'Nej'
+      if (value === '') return '(tom)'
+      if (typeof value === 'object') return JSON.stringify(value)
+      return String(value)
+    }
+
+    // Filter out technical fields and fields where both old and new are effectively empty
+    const meaningfulChanges = log.changed_fields.filter((field) => {
+      if (field === 'updated_at') return false
+      const oldValue = log.old_data?.[field]
+      const newValue = log.new_data?.[field]
+      // Skip if both are empty/null
+      if ((oldValue === null || oldValue === undefined || oldValue === '') &&
+          (newValue === null || newValue === undefined || newValue === '')) {
+        return false
+      }
+      return true
+    })
+
+    if (meaningfulChanges.length === 0) return null
+
     return (
       <div className="mt-3 space-y-2">
         <div className="text-xs font-medium text-gray-500 uppercase">Ändringar:</div>
         <div className="space-y-1">
-          {log.changed_fields.map((field) => {
-            // Skip technical fields
-            if (field === 'updated_at') return null
-            
+          {meaningfulChanges.map((field) => {
             const oldValue = log.old_data?.[field]
             const newValue = log.new_data?.[field]
             
             return (
               <div key={field} className="text-sm bg-gray-50 rounded p-2">
-                <span className="font-medium text-gray-700">{field}:</span>
+                <span className="font-medium text-gray-700">{getFieldLabel(field)}:</span>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 mt-1">
                   <span className="text-red-600 line-through text-xs">
-                    {oldValue === null ? '(tom)' : String(oldValue)}
+                    {formatValue(oldValue)}
                   </span>
                   <span className="hidden sm:inline text-gray-400">→</span>
                   <span className="text-green-600 text-xs">
-                    {newValue === null ? '(tom)' : String(newValue)}
+                    {formatValue(newValue)}
                   </span>
                 </div>
               </div>
@@ -128,11 +179,27 @@ export default function AuditLogViewer({ isOpen, onClose }: AuditLogViewerProps)
     )
   }
 
+  // Helper to format values for display (also used by renderNewData)
+  const formatDisplayValue = (value: any): string => {
+    if (value === null || value === undefined) return '(tom)'
+    if (value === true) return 'Ja'
+    if (value === false) return 'Nej'
+    if (value === '') return '(tom)'
+    if (typeof value === 'object') return JSON.stringify(value)
+    return String(value)
+  }
+
   const renderNewData = (log: AuditLog) => {
     if (log.action !== 'INSERT' || !log.new_data) return null
 
     const relevantFields = Object.entries(log.new_data).filter(
-      ([key]) => !['id', 'created_at', 'updated_at', 'deleted_at'].includes(key)
+      ([key, value]) => {
+        // Skip technical fields
+        if (['id', 'created_at', 'updated_at', 'deleted_at', 'customer_id'].includes(key)) return false
+        // Skip empty values
+        if (value === null || value === undefined || value === '') return false
+        return true
+      }
     )
 
     return (
@@ -141,9 +208,9 @@ export default function AuditLogViewer({ isOpen, onClose }: AuditLogViewerProps)
         <div className="grid grid-cols-2 gap-2 text-sm">
           {relevantFields.slice(0, 8).map(([key, value]) => (
             <div key={key} className="bg-gray-50 rounded p-2">
-              <span className="font-medium text-gray-600">{key}:</span>{' '}
+              <span className="font-medium text-gray-600">{getFieldLabel(key)}:</span>{' '}
               <span className="text-gray-800">
-                {value === null ? '(tom)' : value === true ? 'Ja' : value === false ? 'Nej' : String(value)}
+                {formatDisplayValue(value)}
               </span>
             </div>
           ))}

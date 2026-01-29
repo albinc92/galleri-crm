@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
 import CustomerForm from './CustomerForm'
 import ExcelUploader from './ExcelUploader'
+import { ConfirmationModal } from './ConfirmationModal'
 import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter, RefreshCw, Download, Trash2, RotateCcw } from 'lucide-react'
 
 // Mock data will be loaded from localStorage or Excel upload
@@ -28,6 +29,8 @@ export default function CustomerList() {
   const [showEmailExport, setShowEmailExport] = useState(false)
   const [showTrash, setShowTrash] = useState(false)
   const [realtimeUpdate, setRealtimeUpdate] = useState<{ type: string; id: string; timestamp: number } | null>(null)
+  const [deleteConfirmCustomer, setDeleteConfirmCustomer] = useState<CustomerWithContacts | null>(null)
+  const [showClearTrashConfirm, setShowClearTrashConfirm] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -415,25 +418,41 @@ export default function CustomerList() {
   }
 
   // Permanently delete a customer
-  const permanentlyDelete = async (customerId: string) => {
+  const permanentlyDelete = async (customer: CustomerWithContacts) => {
     if (!isSupabaseConfigured || !supabase) return
     
-    if (!confirm('Är du säker? Detta går inte att ångra!')) return
-    
     // Mark as local change
-    recentLocalChanges.current.add(customerId)
-    setTimeout(() => recentLocalChanges.current.delete(customerId), 3000)
+    recentLocalChanges.current.add(customer.id)
+    setTimeout(() => recentLocalChanges.current.delete(customer.id), 3000)
     
     try {
       const { error } = await supabase
         .from('customers')
         .delete()
-        .eq('id', customerId)
+        .eq('id', customer.id)
       
       if (error) throw error
       refetch()
     } catch (err: any) {
       alert('Kunde inte radera: ' + err.message)
+    }
+  }
+
+  // Permanently delete ALL trashed customers
+  const clearAllTrash = async () => {
+    if (!isSupabaseConfigured || !supabase) return
+    
+    try {
+      // Delete all customers where deleted_at is not null
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .not('deleted_at', 'is', null)
+      
+      if (error) throw error
+      refetch()
+    } catch (err: any) {
+      alert('Kunde inte rensa papperskorgen: ' + err.message)
     }
   }
 
@@ -761,9 +780,19 @@ export default function CustomerList() {
       <div className="flex-1 overflow-y-auto min-h-0 pb-2">
         {/* Trash mode banner */}
         {showTrash && (
-          <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-800">
-            <Trash2 className="w-4 h-4" />
-            <span>Du visar raderade kunder. Klicka för att återställa eller ta bort permanent.</span>
+          <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between text-sm text-red-800">
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4" />
+              <span>Du visar raderade kunder. Klicka för att återställa eller ta bort permanent.</span>
+            </div>
+            {filteredCustomers && filteredCustomers.length > 0 && (
+              <button
+                onClick={() => setShowClearTrashConfirm(true)}
+                className="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors"
+              >
+                Rensa alla ({filteredCustomers.length})
+              </button>
+            )}
           </div>
         )}
         
@@ -826,7 +855,7 @@ export default function CustomerList() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    permanentlyDelete(customer.id)
+                    setDeleteConfirmCustomer(customer)
                   }}
                   className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 transition-colors"
                 >
@@ -1011,6 +1040,39 @@ export default function CustomerList() {
           </div>
         </div>
       )}
+
+      {/* Permanent delete confirmation modal - simple yes/no for individual customers */}
+      <ConfirmationModal
+        isOpen={deleteConfirmCustomer !== null}
+        onClose={() => setDeleteConfirmCustomer(null)}
+        onConfirm={async () => {
+          if (deleteConfirmCustomer) {
+            await permanentlyDelete(deleteConfirmCustomer)
+            setDeleteConfirmCustomer(null)
+          }
+        }}
+        title="Permanent radering"
+        message={`Vill du permanent radera "${deleteConfirmCustomer?.foretagsnamn}"? Detta går inte att ångra.`}
+        confirmText="Radera"
+        cancelText="Avbryt"
+        level="normal"
+      />
+
+      {/* Clear all trash confirmation modal - critical with checkbox */}
+      <ConfirmationModal
+        isOpen={showClearTrashConfirm}
+        onClose={() => setShowClearTrashConfirm(false)}
+        onConfirm={async () => {
+          await clearAllTrash()
+          setShowClearTrashConfirm(false)
+        }}
+        title="Rensa papperskorgen"
+        message={`Du är på väg att permanent radera ${filteredCustomers?.length || 0} kunder från papperskorgen. Denna åtgärd kan INTE ångras!`}
+        confirmText="Rensa alla"
+        cancelText="Avbryt"
+        level="critical"
+        checkboxText="Jag förstår att alla raderade kunder kommer att tas bort permanent."
+      />
     </div>
   )
 }

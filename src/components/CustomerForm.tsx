@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts, Contact, Sale } from '../types'
 import ContactSection from './ContactSection'
 import SalesSection from './SalesSection'
+import { ConfirmationModal } from './ConfirmationModal'
 import { Save, Trash2, AlertTriangle, RefreshCw, Phone } from 'lucide-react'
 
 interface CustomerFormProps {
@@ -52,6 +53,7 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
     { datum: '', belopp: 0, sald_konst: '' },
   ])
   const [reloading, setReloading] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Reload customer data from database
   const reloadCustomerData = useCallback(async () => {
@@ -338,8 +340,8 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
     }
   }
 
-  const handleDelete = async () => {
-    if (!customer || !confirm('Är du säker på att du vill radera denna kund?')) return
+  const handleDeleteConfirmed = async () => {
+    if (!customer) return
 
     setLoading(true)
     try {
@@ -374,6 +376,17 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
   }
 
   return (
+    <>
+    <ConfirmationModal
+      isOpen={showDeleteConfirm}
+      onClose={() => setShowDeleteConfirm(false)}
+      onConfirm={handleDeleteConfirmed}
+      title="Radera kund"
+      message={`Vill du radera kunden "${formData.foretagsnamn}"? Kunden flyttas till papperskorgen och kan återställas senare.`}
+      confirmText="Radera"
+      cancelText="Avbryt"
+      level="normal"
+    />
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Stale data warning - fixed center screen */}
       {isStale && (
@@ -552,7 +565,7 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
           {customer && (
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={loading}
               className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >
@@ -581,5 +594,6 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
         </div>
       </div>
     </form>
+    </>
   )
 }

@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { Upload, X, AlertCircle, CheckCircle, FileSearch, Download } from 'lucide-react'
 import { CustomerWithContacts } from '../types'
 import { supabase } from '../lib/supabase'
+import { ConfirmationModal } from './ConfirmationModal'
 
 interface ExcelUploaderProps {
   onUploadComplete: () => void
@@ -70,6 +71,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
   const [isOpen, setIsOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [isValidating, setIsValidating] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null)
   const [status, setStatus] = useState<{
     type: 'success' | 'error' | 'progress' | 'validation' | null
@@ -675,26 +677,24 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
   }
 
   const handleClearData = async () => {
-    if (confirm('Are you sure you want to delete all customer data from the database?')) {
-      try {
-        const { error } = await supabase.from('customers').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-        
-        if (error) throw error
+    try {
+      const { error } = await supabase.from('customers').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+      
+      if (error) throw error
 
-        setStatus({
-          type: 'success',
-          message: '🗑️ All customer data deleted!',
-        })
-        setTimeout(() => {
-          onUploadComplete()
-          handleClose()
-        }, 1500)
-      } catch (error: any) {
-        setStatus({
-          type: 'error',
-          message: `❌ Error deleting data: ${error.message}`,
-        })
-      }
+      setStatus({
+        type: 'success',
+        message: '🗑️ All customer data deleted!',
+      })
+      setTimeout(() => {
+        onUploadComplete()
+        handleClose()
+      }, 1500)
+    } catch (error: any) {
+      setStatus({
+        type: 'error',
+        message: `❌ Error deleting data: ${error.message}`,
+      })
     }
   }
 
@@ -966,7 +966,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
 
           <div className="flex justify-between items-center pt-4 border-t">
             <button
-              onClick={handleClearData}
+              onClick={() => setShowClearConfirm(true)}
               className="text-sm text-red-600 hover:text-red-700 hover:underline"
             >
               Radera all data
@@ -980,6 +980,20 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
           </div>
         </div>
       </div>
+
+      {/* Critical confirmation modal for clearing all data */}
+      <ConfirmationModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={handleClearData}
+        title="Radera ALLA kunddata"
+        message="Du är på väg att permanent radera ALLA kunder, kontakter och försäljningsdata från databasen. Denna åtgärd kan INTE ångras!"
+        confirmText="Radera allt"
+        cancelText="Avbryt"
+        level="critical"
+        checkboxText="Jag förstår att ALL data kommer att raderas permanent."
+        typeToConfirm="RADERA"
+      />
     </div>
   )
 }
