@@ -23,7 +23,8 @@ export default function CustomerList() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSortOpen, setIsSortOpen] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers' | 'swedish'>('all')
+  const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers' | 'followup'>('all')
+  const [followUpMonth, setFollowUpMonth] = useState<string>('')  // Format: YYYY-MM
   const [showEmailExport, setShowEmailExport] = useState(false)
   const [showTrash, setShowTrash] = useState(false)
   const [realtimeUpdate, setRealtimeUpdate] = useState<{ type: string; id: string; timestamp: number } | null>(null)
@@ -157,10 +158,12 @@ export default function CustomerList() {
     if (activeFilter === 'offers') {
       return customer.contacts?.some(contact => (contact as any).erbjudanden === true)
     }
-    if (activeFilter === 'swedish') {
-      // Swedish postal codes are 5 digits (with optional space): 123 45 or 12345
-      const postnummer = customer.postnummer?.replace(/\s/g, '') || ''
-      return /^\d{5}$/.test(postnummer) && parseInt(postnummer) >= 10000 && parseInt(postnummer) <= 99999
+    if (activeFilter === 'followup' && followUpMonth) {
+      // Check if any contact has a matching "aterkom" date
+      return customer.contacts?.some(contact => {
+        if (!contact.aterkom) return false
+        return contact.aterkom.startsWith(followUpMonth)
+      })
     }
     return true
   })
@@ -652,19 +655,75 @@ export default function CustomerList() {
                 <Mail className="w-4 h-4" />
                 Erbjudanden
               </button>
-              <button
-                onClick={() => {
-                  setActiveFilter('swedish')
-                  setCurrentPage(1)
-                  setIsFilterOpen(false)
-                }}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                  activeFilter === 'swedish' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                }`}
-              >
-                🇸🇪
-                Svenska kunder
-              </button>
+              <div className="border-t border-gray-100 mt-1 pt-1">
+                <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase">Återkom månad</div>
+                
+                {/* Quick select buttons */}
+                <div className="px-3 pb-2 grid grid-cols-2 gap-1">
+                  {(() => {
+                    const today = new Date()
+                    const months = []
+                    for (let i = 0; i < 6; i++) {
+                      const date = new Date(today.getFullYear(), today.getMonth() + i, 1)
+                      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+                      const label = date.toLocaleDateString('sv-SE', { month: 'short', year: '2-digit' })
+                      months.push({ value, label })
+                    }
+                    return months.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          setFollowUpMonth(value)
+                          setActiveFilter('followup')
+                          setCurrentPage(1)
+                          setIsFilterOpen(false)
+                        }}
+                        className={`px-2 py-1.5 text-xs rounded transition-colors ${
+                          followUpMonth === value
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))
+                  })()}
+                </div>
+                
+                {/* Custom month picker */}
+                <div className="px-3 pb-2">
+                  <input
+                    type="month"
+                    value={followUpMonth}
+                    onChange={(e) => {
+                      setFollowUpMonth(e.target.value)
+                      if (e.target.value) {
+                        setActiveFilter('followup')
+                        setCurrentPage(1)
+                      } else {
+                        setActiveFilter('all')
+                      }
+                      setIsFilterOpen(false)
+                    }}
+                    className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Annan månad..."
+                  />
+                </div>
+                
+                {followUpMonth && (
+                  <button
+                    onClick={() => {
+                      setFollowUpMonth('')
+                      setActiveFilter('all')
+                      setCurrentPage(1)
+                      setIsFilterOpen(false)
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                  >
+                    ✕ Rensa datumfilter
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
