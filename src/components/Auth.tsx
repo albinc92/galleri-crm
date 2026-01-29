@@ -82,7 +82,7 @@ export default function Auth() {
                 <p className="mt-2 text-sm text-gray-500">
                   Ange e-postadressen du registrerade dig med så skickar vi en länk för att återställa ditt lösenord.
                   <br />
-                  <span className="text-amber-600">Kolla även skräppost/spam om du inte får något mail.</span>
+                  <span className="text-amber-600">Kolla skräppost/spam. Avsändare: <strong>Supabase Auth</strong> (noreply@mail.app.supabase.io)</span>
                 </p>
               </div>
 
