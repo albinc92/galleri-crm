@@ -23,7 +23,7 @@ export default function CustomerList() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSortOpen, setIsSortOpen] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers'>('all')
+  const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers' | 'swedish'>('all')
   const [showEmailExport, setShowEmailExport] = useState(false)
   const [showTrash, setShowTrash] = useState(false)
   const [realtimeUpdate, setRealtimeUpdate] = useState<{ type: string; id: string; timestamp: number } | null>(null)
@@ -141,7 +141,8 @@ export default function CustomerList() {
         query = query.is('deleted_at', null)
       }
       
-      const { data, error } = await query.order('foretagsnamn')
+      // Remove the default 1000 row limit to get all customers
+      const { data, error } = await query.order('foretagsnamn').range(0, 9999)
 
       if (error) throw error
       return data as CustomerWithContacts[]
@@ -155,6 +156,11 @@ export default function CustomerList() {
     }
     if (activeFilter === 'offers') {
       return customer.contacts?.some(contact => (contact as any).erbjudanden === true)
+    }
+    if (activeFilter === 'swedish') {
+      // Swedish postal codes are 5 digits (with optional space): 123 45 or 12345
+      const postnummer = customer.postnummer?.replace(/\s/g, '') || ''
+      return /^\d{5}$/.test(postnummer) && parseInt(postnummer) >= 10000 && parseInt(postnummer) <= 99999
     }
     return true
   })
@@ -645,6 +651,19 @@ export default function CustomerList() {
               >
                 <Mail className="w-4 h-4" />
                 Erbjudanden
+              </button>
+              <button
+                onClick={() => {
+                  setActiveFilter('swedish')
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                  activeFilter === 'swedish' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                }`}
+              >
+                🇸🇪
+                Svenska kunder
               </button>
             </div>
           )}

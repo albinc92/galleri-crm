@@ -1,12 +1,29 @@
 import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { Upload, X, AlertCircle, CheckCircle } from 'lucide-react'
+import { Upload, X, AlertCircle, CheckCircle, FileSearch, Download } from 'lucide-react'
 import { CustomerWithContacts } from '../types'
 import { supabase } from '../lib/supabase'
 
 interface ExcelUploaderProps {
   onUploadComplete: () => void
   compact?: boolean
+}
+
+// Validation issue types
+interface ValidationIssue {
+  row: number
+  field: string
+  value: string
+  type: 'error' | 'warning'
+  message: string
+}
+
+interface ValidationReport {
+  totalRows: number
+  validRows: number
+  errors: ValidationIssue[]
+  warnings: ValidationIssue[]
+  duplicateKundnr: Map<string, number[]>
 }
 
 // Helper function to convert Excel date serial to ISO date string
@@ -52,14 +69,266 @@ const excelDateToISO = (serial: any): string | null => {
 export default function ExcelUploader({ onUploadComplete, compact = false }: ExcelUploaderProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isValidating, setIsValidating] = useState(false)
+  const [validationReport, setValidationReport] = useState<ValidationReport | null>(null)
   const [status, setStatus] = useState<{
-    type: 'success' | 'error' | 'progress' | null
+    type: 'success' | 'error' | 'progress' | 'validation' | null
     message: string
   }>({ type: null, message: '' })
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const [errors, setErrors] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const validateInputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef(false)
+
+  // Email validation regex
+  const isValidEmail = (email: string): boolean => {
+    if (!email) return true // Empty is ok
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  // Phone validation (basic - just check it's not obviously wrong)
+  const isValidPhone = (phone: string): boolean => {
+    if (!phone) return true
+    // Should contain at least some digits
+    return /\d{3,}/.test(phone.replace(/[\s\-\+\(\)]/g, ''))
+  }
+
+  // Validate Excel file without importing
+  const handleValidateFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsValidating(true)
+    setValidationReport(null)
+    setStatus({ type: 'progress', message: 'Validerar fil...' })
+
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      const jsonData = XLSX.utils.sheet_to_json(worksheet)
+
+      const report: ValidationReport = {
+        totalRows: jsonData.length,
+        validRows: 0,
+        errors: [],
+        warnings: [],
+        duplicateKundnr: new Map(),
+      }
+
+      // Track kundnr for duplicate detection
+      const kundnrMap = new Map<string, number[]>()
+
+      // Validate each row
+      jsonData.forEach((row: any, index: number) => {
+        const rowNum = index + 2 // Excel rows start at 1, plus header row
+        let hasError = false
+
+        // Check Kundnr
+        const kundnr = String(row['Kundnr'] || '').trim()
+        if (!kundnr) {
+          report.warnings.push({
+            row: rowNum,
+            field: 'Kundnr',
+            value: '',
+            type: 'warning',
+            message: 'Saknar Kundnr - kommer att autogenereras',
+          })
+        } else {
+          // Track for duplicates
+          if (!kundnrMap.has(kundnr)) {
+            kundnrMap.set(kundnr, [])
+          }
+          kundnrMap.get(kundnr)!.push(rowNum)
+        }
+
+        // Check company name (required)
+        const namn = String(row['Namn'] || '').trim()
+        if (!namn) {
+          report.errors.push({
+            row: rowNum,
+            field: 'Namn',
+            value: '',
+            type: 'error',
+            message: 'Saknar företagsnamn (Namn) - obligatoriskt fält',
+          })
+          hasError = true
+        }
+
+        // Validate emails
+        const emails = [
+          { field: 'Email Ordförande', value: row['Email Ordförande'] },
+          { field: 'Email Kassör', value: row['Email Kassör'] },
+          { field: 'Email Ansvarig 1', value: row['Email Ansvarig 1'] },
+        ]
+        
+        emails.forEach(({ field, value }) => {
+          if (value && !isValidEmail(String(value).trim())) {
+            report.warnings.push({
+              row: rowNum,
+              field,
+              value: String(value),
+              type: 'warning',
+              message: `Ogiltigt e-postformat: "${value}"`,
+            })
+          }
+        })
+
+        // Validate phone numbers
+        const phones = [
+          { field: 'Telefon', value: row['Telefon'] },
+          { field: 'Tel ordförande', value: row['Tel ordförande'] },
+          { field: 'Mobil Ordförande', value: row['Mobil Ordförande'] },
+          { field: 'Tel kassör', value: row['Tel kassör'] },
+          { field: 'Mobil Kassör', value: row['Mobil Kassör'] },
+        ]
+
+        phones.forEach(({ field, value }) => {
+          if (value && !isValidPhone(String(value))) {
+            report.warnings.push({
+              row: rowNum,
+              field,
+              value: String(value),
+              type: 'warning',
+              message: `Ovanligt telefonformat: "${value}"`,
+            })
+          }
+        })
+
+        // Check for completely empty rows (only has auto-generated fields)
+        const hasAnyData = namn || row['Adress'] || row['Telefon'] || 
+          row['Namn Ordförande'] || row['Namn Kassör']
+        
+        if (!hasAnyData) {
+          report.warnings.push({
+            row: rowNum,
+            field: '(hela raden)',
+            value: '',
+            type: 'warning',
+            message: 'Tom rad utan användbar data',
+          })
+        }
+
+        if (!hasError) {
+          report.validRows++
+        }
+      })
+
+      // Add duplicate errors
+      kundnrMap.forEach((rows, kundnr) => {
+        if (rows.length > 1) {
+          report.duplicateKundnr.set(kundnr, rows)
+          rows.forEach(row => {
+            report.errors.push({
+              row,
+              field: 'Kundnr',
+              value: kundnr,
+              type: 'error',
+              message: `Duplicerat Kundnr "${kundnr}" finns även på rad ${rows.filter(r => r !== row).join(', ')}`,
+            })
+          })
+          // Adjust valid count for duplicates
+          report.validRows = Math.max(0, report.validRows - (rows.length - 1))
+        }
+      })
+
+      // Sort errors by row number
+      report.errors.sort((a, b) => a.row - b.row)
+      report.warnings.sort((a, b) => a.row - b.row)
+
+      setValidationReport(report)
+      setIsValidating(false)
+      
+      if (report.errors.length === 0) {
+        setStatus({
+          type: 'success',
+          message: `✅ Validering klar! ${report.validRows} av ${report.totalRows} rader är redo att importeras.`,
+        })
+      } else {
+        setStatus({
+          type: 'validation',
+          message: `⚠️ Hittade ${report.errors.length} fel och ${report.warnings.length} varningar`,
+        })
+      }
+
+      // Reset file input
+      if (validateInputRef.current) {
+        validateInputRef.current.value = ''
+      }
+    } catch (error: any) {
+      setIsValidating(false)
+      setStatus({
+        type: 'error',
+        message: `❌ Fel vid validering: ${error.message}`,
+      })
+    }
+  }
+
+  // Generate and download validation report
+  const downloadValidationReport = () => {
+    if (!validationReport) return
+
+    // Calculate non-duplicate errors
+    const nonDuplicateErrors = validationReport.errors.filter(err => !err.message.startsWith('Duplicerat Kundnr'))
+    const duplicateCount = validationReport.duplicateKundnr.size
+
+    const lines: string[] = [
+      '═══════════════════════════════════════════════════════════════',
+      '                    VALIDERINGSRAPPORT',
+      `                    ${new Date().toLocaleString('sv-SE')}`,
+      '═══════════════════════════════════════════════════════════════',
+      '',
+      `Totalt antal rader: ${validationReport.totalRows}`,
+      `Giltiga rader: ${validationReport.validRows}`,
+      `Duplicerade kundnummer: ${duplicateCount}`,
+      `Andra fel: ${nonDuplicateErrors.length}`,
+      `Varningar: ${validationReport.warnings.length}`,
+      '',
+    ]
+
+    if (validationReport.duplicateKundnr.size > 0) {
+      lines.push('───────────────────────────────────────────────────────────────')
+      lines.push('DUPLICERADE KUNDNUMMER:')
+      lines.push('───────────────────────────────────────────────────────────────')
+      validationReport.duplicateKundnr.forEach((rows, kundnr) => {
+        lines.push(`  "${kundnr}" finns på raderna: ${rows.join(', ')}`)
+      })
+      lines.push('')
+    }
+
+    if (nonDuplicateErrors.length > 0) {
+      lines.push('───────────────────────────────────────────────────────────────')
+      lines.push('FEL (måste åtgärdas innan import):')
+      lines.push('───────────────────────────────────────────────────────────────')
+      nonDuplicateErrors.forEach(err => {
+        lines.push(`  Rad ${err.row}: ${err.message}`)
+      })
+      lines.push('')
+    }
+
+    if (validationReport.warnings.length > 0) {
+      lines.push('───────────────────────────────────────────────────────────────')
+      lines.push('VARNINGAR (kan importeras men bör kontrolleras):')
+      lines.push('───────────────────────────────────────────────────────────────')
+      validationReport.warnings.forEach(warn => {
+        lines.push(`  Rad ${warn.row}: [${warn.field}] ${warn.message}`)
+      })
+      lines.push('')
+    }
+
+    lines.push('═══════════════════════════════════════════════════════════════')
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `validering_${new Date().toISOString().split('T')[0]}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   // Cancel upload when modal closes
   const handleClose = () => {
@@ -69,6 +338,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
     setIsOpen(false)
     setStatus({ type: null, message: '' })
     setIsUploading(false)
+    setValidationReport(null)
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -370,7 +640,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-lg w-full p-6">
+      <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-900">Import Customer Data</h2>
           <button
@@ -385,11 +655,9 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="text-sm font-semibold text-blue-900 mb-2">📋 Instructions:</h3>
             <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-              <li>Upload an Excel file (.xlsx or .xls)</li>
-              <li>First row should contain column headers</li>
-              <li>Supports columns: Kundnr, Namn, Adress, Postnr, Telefon, Aktiv kund, etc.</li>
-              <li>Will import contacts (Ordförande, Kassör, Ansvarig) and sales data</li>
-              <li>Data will be stored in Supabase cloud database</li>
+              <li><strong>Steg 1:</strong> Validera filen först för att hitta problem</li>
+              <li><strong>Steg 2:</strong> Ladda ner rapporten och åtgärda fel i Excel</li>
+              <li><strong>Steg 3:</strong> När valideringen är OK, importera filen</li>
             </ul>
           </div>
 
@@ -400,6 +668,8 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
                   ? 'bg-green-50 text-green-800'
                   : status.type === 'progress'
                   ? 'bg-blue-50 text-blue-800'
+                  : status.type === 'validation'
+                  ? 'bg-amber-50 text-amber-800'
                   : 'bg-red-50 text-red-800'
               }`}
             >
@@ -426,6 +696,118 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
             </div>
           )}
 
+          {/* Validation Report */}
+          {validationReport && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 flex justify-between items-center">
+                <h3 className="font-semibold text-gray-900">Valideringsresultat</h3>
+                <button
+                  onClick={downloadValidationReport}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Ladda ner rapport
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-3">
+                {/* Summary - calculate non-duplicate errors for display */}
+                {(() => {
+                  const nonDuplicateErrors = validationReport.errors.filter(err => !err.message.startsWith('Duplicerat Kundnr'))
+                  const duplicateCount = validationReport.duplicateKundnr.size
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                      <div className="bg-gray-50 rounded p-2">
+                        <div className="text-2xl font-bold text-gray-900">{validationReport.totalRows}</div>
+                        <div className="text-xs text-gray-600">Totalt</div>
+                      </div>
+                      <div className="bg-green-50 rounded p-2">
+                        <div className="text-2xl font-bold text-green-600">{validationReport.validRows}</div>
+                        <div className="text-xs text-green-700">Giltiga</div>
+                      </div>
+                      <div className="bg-red-50 rounded p-2">
+                        <div className="text-2xl font-bold text-red-600">{duplicateCount}</div>
+                        <div className="text-xs text-red-700">Dubletter</div>
+                      </div>
+                      <div className="bg-orange-50 rounded p-2">
+                        <div className="text-2xl font-bold text-orange-600">{nonDuplicateErrors.length}</div>
+                        <div className="text-xs text-orange-700">Andra fel</div>
+                      </div>
+                      <div className="bg-amber-50 rounded p-2">
+                        <div className="text-2xl font-bold text-amber-600">{validationReport.warnings.length}</div>
+                        <div className="text-xs text-amber-700">Varningar</div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Duplicates */}
+                {validationReport.duplicateKundnr.size > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded p-3">
+                    <h4 className="text-sm font-semibold text-red-800 mb-2">
+                      🔴 Duplicerade Kundnr ({validationReport.duplicateKundnr.size} st):
+                    </h4>
+                    <div className="text-xs text-red-700 space-y-1 max-h-24 overflow-y-auto">
+                      {Array.from(validationReport.duplicateKundnr.entries()).slice(0, 5).map(([kundnr, rows]) => (
+                        <div key={kundnr}>
+                          <strong>"{kundnr}"</strong> på raderna: {rows.join(', ')}
+                        </div>
+                      ))}
+                      {validationReport.duplicateKundnr.size > 5 && (
+                        <div className="font-semibold">...och {validationReport.duplicateKundnr.size - 5} till (se rapport)</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Other Errors (non-duplicate) */}
+                {(() => {
+                  const nonDuplicateErrors = validationReport.errors.filter(err => !err.message.startsWith('Duplicerat Kundnr'))
+                  if (nonDuplicateErrors.length === 0) return null
+                  return (
+                    <div className="bg-orange-50 border border-orange-200 rounded p-3">
+                      <h4 className="text-sm font-semibold text-orange-800 mb-2">
+                        🟠 Andra fel ({nonDuplicateErrors.length} st):
+                      </h4>
+                      <div className="text-xs text-orange-700 space-y-1 max-h-24 overflow-y-auto">
+                        {nonDuplicateErrors.slice(0, 5).map((err, i) => (
+                          <div key={i}>Rad {err.row}: {err.message}</div>
+                        ))}
+                        {nonDuplicateErrors.length > 5 && (
+                          <div className="font-semibold">...och {nonDuplicateErrors.length - 5} till (se rapport)</div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Warnings */}
+                {validationReport.warnings.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                    <h4 className="text-sm font-semibold text-amber-800 mb-2">
+                      🟡 Varningar ({validationReport.warnings.length} st):
+                    </h4>
+                    <div className="text-xs text-amber-700 space-y-1 max-h-24 overflow-y-auto">
+                      {validationReport.warnings.slice(0, 5).map((warn, i) => (
+                        <div key={i}>Rad {warn.row}: {warn.message}</div>
+                      ))}
+                      {validationReport.warnings.length > 5 && (
+                        <div className="font-semibold">...och {validationReport.warnings.length - 5} till (se rapport)</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {validationReport.errors.length === 0 && validationReport.warnings.length === 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded p-3 text-center">
+                    <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                    <p className="text-sm text-green-800 font-medium">Inga problem hittades! Filen är redo att importeras.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {errors.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-h-40 overflow-y-auto">
               <h3 className="text-sm font-semibold text-red-900 mb-2">
@@ -446,28 +828,57 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
             </div>
           )}
 
-          <div className={`border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-colors ${status.type === 'progress' ? 'opacity-50 pointer-events-none' : 'hover:border-blue-400'}`}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="excel-upload"
-              disabled={status.type === 'progress'}
-            />
-            <label
-              htmlFor="excel-upload"
-              className={`flex flex-col items-center gap-3 ${status.type === 'progress' ? '' : 'cursor-pointer'}`}
-            >
-              <Upload className="w-12 h-12 text-gray-400" />
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  {status.type === 'progress' ? 'Uploading...' : 'Click to upload Excel file'}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">.xlsx or .xls files only</p>
-              </div>
-            </label>
+          {/* Two-column action area */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Validate */}
+            <div className={`border-2 border-dashed border-amber-300 rounded-lg p-4 text-center transition-colors ${isValidating ? 'opacity-50 pointer-events-none' : 'hover:border-amber-400 hover:bg-amber-50'}`}>
+              <input
+                ref={validateInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleValidateFile}
+                className="hidden"
+                id="excel-validate"
+                disabled={isValidating || isUploading}
+              />
+              <label
+                htmlFor="excel-validate"
+                className={`flex flex-col items-center gap-2 ${isValidating ? '' : 'cursor-pointer'}`}
+              >
+                <FileSearch className="w-10 h-10 text-amber-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {isValidating ? 'Validerar...' : 'Steg 1: Validera fil'}
+                  </p>
+                  <p className="text-xs text-gray-500">Hitta problem innan import</p>
+                </div>
+              </label>
+            </div>
+
+            {/* Import */}
+            <div className={`border-2 border-dashed border-green-300 rounded-lg p-4 text-center transition-colors ${status.type === 'progress' ? 'opacity-50 pointer-events-none' : 'hover:border-green-400 hover:bg-green-50'}`}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="excel-upload"
+                disabled={status.type === 'progress'}
+              />
+              <label
+                htmlFor="excel-upload"
+                className={`flex flex-col items-center gap-2 ${status.type === 'progress' ? '' : 'cursor-pointer'}`}
+              >
+                <Upload className="w-10 h-10 text-green-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {status.type === 'progress' ? 'Importerar...' : 'Steg 2: Importera fil'}
+                  </p>
+                  <p className="text-xs text-gray-500">Ladda upp till databasen</p>
+                </div>
+              </label>
+            </div>
           </div>
 
           <div className="flex justify-between items-center pt-4 border-t">
@@ -475,13 +886,13 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
               onClick={handleClearData}
               className="text-sm text-red-600 hover:text-red-700 hover:underline"
             >
-              Clear all data
+              Radera all data
             </button>
             <button
               onClick={handleClose}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              {isUploading ? 'Avbryt' : 'Close'}
+              {isUploading ? 'Avbryt' : 'Stäng'}
             </button>
           </div>
         </div>
