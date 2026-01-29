@@ -347,6 +347,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
 
     cancelRef.current = false
     setIsUploading(true)
+    setErrors([])
 
     try {
       const data = await file.arrayBuffer()
@@ -354,13 +355,82 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
-      // Transform Excel data to CustomerWithContacts format
+      // STRICT PARSING: Validate all rows first before importing
+      const parseErrors: string[] = []
+      const seenKundnr = new Map<string, number>()
+
+      // First pass: validate all rows
+      jsonData.forEach((row: any, index: number) => {
+        const rowNum = index + 2 // Excel row (1-indexed + header)
+        const kundnr = String(row['Kundnr'] || '').trim()
+        const namn = String(row['Namn'] || '').trim()
+
+        // Required field: Kundnr
+        if (!kundnr) {
+          parseErrors.push(`Rad ${rowNum}: Saknar Kundnr (obligatoriskt fält)`)
+        } else {
+          // Check for duplicates within the file
+          if (seenKundnr.has(kundnr)) {
+            parseErrors.push(`Rad ${rowNum}: Duplicerat Kundnr "${kundnr}" (finns också på rad ${seenKundnr.get(kundnr)})`)
+          } else {
+            seenKundnr.set(kundnr, rowNum)
+          }
+        }
+
+        // Required field: Namn
+        if (!namn) {
+          parseErrors.push(`Rad ${rowNum}: Saknar Namn (obligatoriskt fält)`)
+        }
+
+        // Validate email formats
+        const emailFields = [
+          { col: 'Email Ordförande', value: row['Email Ordförande'] },
+          { col: 'Email Kassör', value: row['Email Kassör'] },
+          { col: 'Email Ansvarig 1', value: row['Email Ansvarig 1'] },
+        ]
+        emailFields.forEach(({ col, value }) => {
+          if (value && !isValidEmail(String(value).trim())) {
+            parseErrors.push(`Rad ${rowNum}: Ogiltig e-post i "${col}": ${value}`)
+          }
+        })
+
+        // Validate phone formats
+        const phoneFields = [
+          { col: 'Telefon', value: row['Telefon'] },
+          { col: 'Tel ordförande', value: row['Tel ordförande'] },
+          { col: 'Mobil Ordförande', value: row['Mobil Ordförande'] },
+          { col: 'Tel kassör', value: row['Tel kassör'] },
+          { col: 'Mobil Kassör', value: row['Mobil Kassör'] },
+        ]
+        phoneFields.forEach(({ col, value }) => {
+          if (value && !isValidPhone(String(value))) {
+            parseErrors.push(`Rad ${rowNum}: Ogiltigt telefonnummer i "${col}": ${value}`)
+          }
+        })
+      })
+
+      // If there are validation errors, abort the import
+      if (parseErrors.length > 0) {
+        setErrors(parseErrors)
+        setIsUploading(false)
+        setStatus({
+          type: 'error',
+          message: `❌ Import avbruten! ${parseErrors.length} valideringsfel. Kör "Validera fil" först för att se alla problem.`,
+        })
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
+        return
+      }
+
+      // Second pass: transform validated data to CustomerWithContacts format
       const customers: CustomerWithContacts[] = jsonData.map((row: any, index: number) => {
         const customer: CustomerWithContacts = {
           id: `imported-${index}-${Date.now()}`,
-          kundnr: String(row['Kundnr'] || `K${String(index + 1).padStart(3, '0')}`),
+          kundnr: String(row['Kundnr']).trim(),
           aktiv: String(row['Aktiv kund'] || 'NEJ').toUpperCase(),
-          foretagsnamn: row['Namn'] || '',
+          foretagsnamn: String(row['Namn']).trim(),
           adress: row['Adress'] || '',
           postnummer: row['Postnr'] || '',
           stad: row['Postadress'] || '',
@@ -448,68 +518,67 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
         return customer
       })
 
-      // Insert customers into Supabase
-      let successCount = 0
-      let errorCount = 0
-      const errorMessages: string[] = []
-      
+      // ATOMIC UPLOAD: Insert all at once, rollback on any failure
       setProgress({ current: 0, total: customers.length })
       setErrors([])
       setStatus({
         type: 'progress',
-        message: `Importerar 0/${customers.length} kunder...`,
+        message: `Förbereder import av ${customers.length} kunder...`,
       })
 
-      for (let i = 0; i < customers.length; i++) {
-        // Check if cancelled
-        if (cancelRef.current) {
-          setStatus({
-            type: 'error',
-            message: `Import avbruten. ${successCount} kunder importerades.`,
-          })
-          setIsUploading(false)
-          return
+      // Prepare all customer records for batch insert
+      const customersToInsert = customers.map(c => ({
+        kundnr: c.kundnr,
+        aktiv: c.aktiv,
+        foretagsnamn: c.foretagsnamn,
+        adress: c.adress,
+        postnummer: c.postnummer,
+        stad: c.stad,
+        telefon: c.telefon,
+        bokat_besok: c.bokat_besok,
+        anteckningar: c.anteckningar,
+      }))
+
+      // Step 1: Batch insert all customers
+      setStatus({
+        type: 'progress',
+        message: `Importerar ${customers.length} kunder...`,
+      })
+      
+      const { data: insertedCustomers, error: customersError } = await supabase
+        .from('customers')
+        .insert(customersToInsert)
+        .select('id, kundnr')
+
+      if (customersError) {
+        // Check for duplicate
+        if (customersError.code === '23505') {
+          throw new Error('Det finns duplicerade kundnummer i filen eller i databasen. Kör "Validera fil" för att identifiera problemet.')
         }
-        
-        const customer = customers[i]
-        try {
-          // Update progress
-          setProgress({ current: i + 1, total: customers.length })
-          setStatus({
-            type: 'progress',
-            message: `Importerar ${i + 1}/${customers.length} kunder...`,
-          })
+        throw customersError
+      }
 
-          // Insert customer (without contacts and sales)
-          const { data: insertedCustomer, error: customerError } = await supabase
-            .from('customers')
-            .insert({
-              kundnr: customer.kundnr,
-              aktiv: customer.aktiv,
-              foretagsnamn: customer.foretagsnamn,
-              adress: customer.adress,
-              postnummer: customer.postnummer,
-              stad: customer.stad,
-              telefon: customer.telefon,
-              bokat_besok: customer.bokat_besok,
-              anteckningar: customer.anteckningar,
-            })
-            .select()
-            .single()
+      if (!insertedCustomers || insertedCustomers.length === 0) {
+        throw new Error('Inga kunder kunde importeras')
+      }
 
-          if (customerError) {
-            // Skip duplicates silently
-            if (customerError.code === '23505') {
-              console.log(`Skipping duplicate customer: ${customer.kundnr}`)
-              continue
-            }
-            throw customerError
-          }
+      // Create a map of kundnr -> database id
+      const kundnrToId = new Map<string, string>()
+      insertedCustomers.forEach(c => kundnrToId.set(c.kundnr, c.id))
 
-          // Insert contacts if any
-          if (customer.contacts && customer.contacts.length > 0) {
-            const contactsToInsert = customer.contacts.map(contact => ({
-              customer_id: insertedCustomer.id,
+      // Step 2: Prepare and batch insert all contacts
+      setStatus({
+        type: 'progress',
+        message: `Importerar kontakter...`,
+      })
+
+      const allContacts: any[] = []
+      customers.forEach(customer => {
+        const dbId = kundnrToId.get(customer.kundnr)
+        if (dbId && customer.contacts) {
+          customer.contacts.forEach(contact => {
+            allContacts.push({
+              customer_id: dbId,
               role: contact.role,
               namn: contact.namn,
               telefon: contact.telefon,
@@ -517,60 +586,74 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
               email: contact.email,
               senast_kontakt: excelDateToISO(contact.senast_kontakt),
               aterkom: excelDateToISO(contact.aterkom),
-            }))
+            })
+          })
+        }
+      })
 
-            const { error: contactsError } = await supabase
-              .from('contacts')
-              .insert(contactsToInsert)
+      if (allContacts.length > 0) {
+        const { error: contactsError } = await supabase
+          .from('contacts')
+          .insert(allContacts)
 
-            if (contactsError) {
-              console.error('Error inserting contacts:', contactsError)
-              errorMessages.push(`${customer.foretagsnamn} (contacts): ${contactsError.message}`)
-            }
-          }
-
-          // Insert sales if any
-          if (customer.sales && customer.sales.length > 0) {
-            const salesToInsert = customer.sales.map(sale => ({
-              customer_id: insertedCustomer.id,
-              datum: excelDateToISO(sale.datum),
-              belopp: sale.belopp,
-              sald_konst: sale.sald_konst,
-            }))
-
-            const { error: salesError } = await supabase
-              .from('sales')
-              .insert(salesToInsert)
-
-            if (salesError) {
-              console.error('Error inserting sales:', salesError)
-              errorMessages.push(`${customer.foretagsnamn} (sales): ${salesError.message}`)
-            }
-          }
-
-          successCount++
-        } catch (error: any) {
-          console.error('Error inserting customer:', error)
-          errorCount++
-          errorMessages.push(`${customer.foretagsnamn || customer.kundnr || 'Unknown'}: ${error.message}`)
+        if (contactsError) {
+          // Rollback: delete all inserted customers
+          console.error('Contacts insert failed, rolling back customers...', contactsError)
+          await supabase
+            .from('customers')
+            .delete()
+            .in('id', insertedCustomers.map(c => c.id))
+          throw new Error(`Kontakter kunde inte importeras: ${contactsError.message}. Alla ändringar har rullats tillbaka.`)
         }
       }
 
-      // Set collected errors
-      setErrors(errorMessages)
-      setIsUploading(false)
+      // Step 3: Prepare and batch insert all sales
+      setStatus({
+        type: 'progress',
+        message: `Importerar försäljningsdata...`,
+      })
 
-      if (errorCount === 0) {
-        setStatus({
-          type: 'success',
-          message: `✅ Successfully imported ${successCount} customers!`,
-        })
-      } else {
-        setStatus({
-          type: 'error',
-          message: `⚠️ Imported ${successCount} customers, ${errorCount} failed.`,
-        })
+      const allSales: any[] = []
+      customers.forEach(customer => {
+        const dbId = kundnrToId.get(customer.kundnr)
+        if (dbId && customer.sales) {
+          customer.sales.forEach(sale => {
+            allSales.push({
+              customer_id: dbId,
+              datum: excelDateToISO(sale.datum),
+              belopp: sale.belopp,
+              sald_konst: sale.sald_konst,
+            })
+          })
+        }
+      })
+
+      if (allSales.length > 0) {
+        const { error: salesError } = await supabase
+          .from('sales')
+          .insert(allSales)
+
+        if (salesError) {
+          // Rollback: delete all inserted contacts and customers
+          console.error('Sales insert failed, rolling back...', salesError)
+          await supabase
+            .from('contacts')
+            .delete()
+            .in('customer_id', insertedCustomers.map(c => c.id))
+          await supabase
+            .from('customers')
+            .delete()
+            .in('id', insertedCustomers.map(c => c.id))
+          throw new Error(`Försäljningsdata kunde inte importeras: ${salesError.message}. Alla ändringar har rullats tillbaka.`)
+        }
       }
+
+      // Success!
+      setIsUploading(false)
+      setStatus({
+        type: 'success',
+        message: `✅ Importerade ${insertedCustomers.length} kunder, ${allContacts.length} kontakter och ${allSales.length} försäljningar!`,
+      })
 
       // Reset file input
       if (fileInputRef.current) {

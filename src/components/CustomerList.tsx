@@ -126,27 +126,45 @@ export default function CustomerList() {
         return stored ? JSON.parse(stored) as CustomerWithContacts[] : []
       }
 
-      let query = supabase
-        .from('customers')
-        .select(`
-          *,
-          contacts(*),
-          sales(*)
-        `)
-      
-      if (showTrash) {
-        // Show only deleted records
-        query = query.not('deleted_at', 'is', null)
-      } else {
-        // Exclude soft-deleted records
-        query = query.is('deleted_at', null)
-      }
-      
-      // Remove the default 1000 row limit to get all customers
-      const { data, error } = await query.order('foretagsnamn').range(0, 9999)
+      // Fetch all customers in batches to bypass Supabase's 1000 row limit
+      const BATCH_SIZE = 1000
+      let allData: CustomerWithContacts[] = []
+      let from = 0
+      let hasMore = true
 
-      if (error) throw error
-      return data as CustomerWithContacts[]
+      while (hasMore) {
+        let query = supabase
+          .from('customers')
+          .select(`
+            *,
+            contacts(*),
+            sales(*)
+          `)
+        
+        if (showTrash) {
+          query = query.not('deleted_at', 'is', null)
+        } else {
+          query = query.is('deleted_at', null)
+        }
+        
+        const { data, error } = await query
+          .order('foretagsnamn')
+          .range(from, from + BATCH_SIZE - 1)
+
+        if (error) throw error
+        
+        if (data && data.length > 0) {
+          allData = [...allData, ...data]
+          from += BATCH_SIZE
+          hasMore = data.length === BATCH_SIZE
+        } else {
+          hasMore = false
+        }
+      }
+
+      console.log('Fetched customers count:', allData.length, 'batches:', Math.ceil(allData.length / BATCH_SIZE))
+
+      return allData as CustomerWithContacts[]
     },
   })
 
