@@ -46,7 +46,7 @@ function App() {
         <header className="bg-white shadow-sm">
           <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
             <h1 className="text-2xl font-bold text-gray-900">🎨 Galleri CRM</h1>
-            <span className="text-sm text-gray-500">(Demo Mode)</span>
+            <span className="text-sm text-gray-500">(Demoläge)</span>
           </div>
         </header>
         <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
@@ -58,9 +58,9 @@ function App() {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800">Demo Mode - Supabase Not Configured</h3>
+                <h3 className="text-sm font-medium text-yellow-800">Demoläge - Supabase ej konfigurerad</h3>
                 <div className="mt-2 text-sm text-yellow-700">
-                  <p>Configure Supabase credentials in <code className="bg-yellow-100 px-1 rounded">.env</code> to enable full functionality.</p>
+                  <p>Konfigurera Supabase-uppgifter i <code className="bg-yellow-100 px-1 rounded">.env</code> för att aktivera full funktionalitet.</p>
                 </div>
               </div>
             </div>

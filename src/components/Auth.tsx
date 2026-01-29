@@ -122,7 +122,7 @@ export default function Auth() {
             <form onSubmit={handleAuth} className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
+                  E-post
                 </label>
                 <input
                   id="email"

@@ -27,7 +27,7 @@ export default function ContactSection({ title, contact, onChange }: ContactSect
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">E-post</label>
           <div className="flex gap-2">
             <input
               type="email"

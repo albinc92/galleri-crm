@@ -671,7 +671,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
       setIsUploading(false)
       setStatus({
         type: 'error',
-        message: `❌ Error importing file: ${error.message}`,
+        message: `❌ Fel vid import: ${error.message}`,
       })
     }
   }
@@ -684,7 +684,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
 
       setStatus({
         type: 'success',
-        message: '🗑️ All customer data deleted!',
+        message: '🗑️ All kunddata har raderats!',
       })
       setTimeout(() => {
         onUploadComplete()
@@ -693,7 +693,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
     } catch (error: any) {
       setStatus({
         type: 'error',
-        message: `❌ Error deleting data: ${error.message}`,
+        message: `❌ Fel vid radering: ${error.message}`,
       })
     }
   }
