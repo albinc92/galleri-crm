@@ -5,11 +5,13 @@ import Auth from './components/Auth'
 import CustomerList from './components/CustomerList'
 import AuditLogViewer from './components/AuditLogViewer'
 import BackupReminder from './components/BackupReminder'
+import AccountSettings from './components/AccountSettings'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAuditLog, setShowAuditLog] = useState(false)
+  const [showAccountSettings, setShowAccountSettings] = useState(false)
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -93,6 +95,17 @@ function App() {
               Historik
             </button>
             <button
+              onClick={() => setShowAccountSettings(true)}
+              className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+              title="Kontoinställningar"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              Konto
+            </button>
+            <button
               onClick={() => supabase.auth.signOut()}
               className="text-sm text-gray-600 hover:text-gray-900"
             >
@@ -105,6 +118,11 @@ function App() {
         <CustomerList />
       </main>
       <AuditLogViewer isOpen={showAuditLog} onClose={() => setShowAuditLog(false)} />
+      <AccountSettings 
+        isOpen={showAccountSettings} 
+        onClose={() => setShowAccountSettings(false)} 
+        userEmail={session?.user?.email || ''}
+      />
       <BackupReminder />
     </div>
   )

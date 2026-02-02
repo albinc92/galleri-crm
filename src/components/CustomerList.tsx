@@ -812,10 +812,12 @@ export default function CustomerList() {
               {!showTrash && (
                 <span
                   className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium flex-shrink-0 ${
-                    customer.aktiv ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                    customer.aktiv === 'JAA' ? 'bg-green-100 text-green-800' : 
+                    customer.aktiv === 'NJA' ? 'bg-yellow-100 text-yellow-800' : 
+                    'bg-gray-100 text-gray-800'
                   }`}
                 >
-                  {customer.aktiv ? 'Aktiv' : 'Inaktiv'}
+                  {customer.aktiv === 'JAA' ? 'Aktiv' : customer.aktiv === 'NJA' ? 'Delvis' : 'Inaktiv'}
                 </span>
               )}
               {showTrash && (

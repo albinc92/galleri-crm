@@ -293,38 +293,72 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
 
       // Update contacts
       if (customerId) {
-        // Ordförande
-        if (ordforande.namn) {
-          const existing = customer?.contacts?.find((c) => c.role === 'ordforande')
-          if (existing) {
-            await supabase
-              .from('contacts')
-              .update({ ...ordforande, updated_at: new Date().toISOString() })
-              .eq('id', existing.id)
-          } else {
-            await supabase.from('contacts').insert([
-              { ...ordforande, customer_id: customerId, role: 'ordforande' as const },
-            ])
-          }
+        // Ordförande - uppdatera om befintlig eller skapa om namn finns
+        const existingOrdforande = customer?.contacts?.find((c) => c.role === 'ordforande')
+        if (existingOrdforande) {
+          // Alltid uppdatera befintlig kontakt (även om bara datum ändras)
+          await supabase
+            .from('contacts')
+            .update({ ...ordforande, updated_at: new Date().toISOString() })
+            .eq('id', existingOrdforande.id)
+        } else if (ordforande.namn) {
+          // Skapa ny endast om namn finns
+          await supabase.from('contacts').insert([
+            { ...ordforande, customer_id: customerId, role: 'ordforande' as const },
+          ])
         }
 
-        // Kassör
-        if (kassor.namn) {
-          const existing = customer?.contacts?.find((c) => c.role === 'kassor')
-          if (existing) {
-            await supabase
-              .from('contacts')
-              .update({ ...kassor, updated_at: new Date().toISOString() })
-              .eq('id', existing.id)
-          } else {
-            await supabase.from('contacts').insert([
-              { ...kassor, customer_id: customerId, role: 'kassor' as const },
-            ])
-          }
+        // Kassör - uppdatera om befintlig eller skapa om namn finns
+        const existingKassor = customer?.contacts?.find((c) => c.role === 'kassor')
+        if (existingKassor) {
+          // Alltid uppdatera befintlig kontakt (även om bara datum ändras)
+          await supabase
+            .from('contacts')
+            .update({ ...kassor, updated_at: new Date().toISOString() })
+            .eq('id', existingKassor.id)
+        } else if (kassor.namn) {
+          // Skapa ny endast om namn finns
+          await supabase.from('contacts').insert([
+            { ...kassor, customer_id: customerId, role: 'kassor' as const },
+          ])
         }
 
-        // Sales - simplified for now
-        // In production, you'd want to handle individual sale updates
+        // Sales - hantera uppdateringar, nya och borttagna
+        const existingSales = customer?.sales || []
+        const validSales = sales.filter(s => s.datum && s.belopp)
+        
+        // Hitta sales att uppdatera, skapa eller ta bort
+        const existingSaleIds = new Set(existingSales.map(s => s.id))
+        const currentSaleIds = new Set(validSales.filter(s => s.id).map(s => s.id))
+        
+        // Ta bort sales som inte längre finns
+        const salesToDelete = existingSales.filter(s => !currentSaleIds.has(s.id))
+        for (const sale of salesToDelete) {
+          await supabase.from('sales').delete().eq('id', sale.id)
+        }
+        
+        // Uppdatera eller skapa sales
+        for (const sale of validSales) {
+          if (sale.id && existingSaleIds.has(sale.id)) {
+            // Uppdatera befintlig
+            await supabase
+              .from('sales')
+              .update({
+                datum: sale.datum,
+                belopp: sale.belopp,
+                sald_konst: sale.sald_konst || null,
+              })
+              .eq('id', sale.id)
+          } else {
+            // Skapa ny
+            await supabase.from('sales').insert([{
+              customer_id: customerId,
+              datum: sale.datum!,
+              belopp: sale.belopp!,
+              sald_konst: sale.sald_konst || null,
+            }])
+          }
+        }
       }
 
       // Mark as local change to prevent self-notification
@@ -412,6 +446,41 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
           </div>
         </div>
       )}
+
+      {/* Actions - Top */}
+      <div className="flex justify-between items-center pb-4 border-b sticky top-0 bg-white z-10">
+        <div>
+          {customer && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <Trash2 className="w-5 h-5" />
+              Radera
+            </button>
+          )}
+        </div>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Avbryt
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center gap-2 px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+          >
+            <Save className="w-5 h-5" />
+            {loading ? 'Sparar...' : 'Spara'}
+          </button>
+        </div>
+      </div>
 
       {/* Basic Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -559,40 +628,6 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
         </label>
       </div>
 
-      {/* Actions */}
-      <div className="flex justify-between items-center border-t pt-6">
-        <div>
-          {customer && (
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <Trash2 className="w-5 h-5" />
-              Radera
-            </button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Avbryt
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center gap-2 px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
-          >
-            <Save className="w-5 h-5" />
-            {loading ? 'Sparar...' : 'Spara'}
-          </button>
-        </div>
-      </div>
     </form>
     </>
   )
