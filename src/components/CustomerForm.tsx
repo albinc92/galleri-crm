@@ -1,18 +1,25 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts, Contact, Sale } from '../types'
 import ContactSection from './ContactSection'
 import SalesSection from './SalesSection'
 import { ConfirmationModal } from './ConfirmationModal'
-import { Save, Trash2, AlertTriangle, RefreshCw, Phone } from 'lucide-react'
+import { AlertTriangle, RefreshCw, Phone } from 'lucide-react'
+
+export interface CustomerFormRef {
+  submit: () => void
+  openDeleteConfirm: () => void
+  isLoading: boolean
+}
 
 interface CustomerFormProps {
   customer: CustomerWithContacts | null
   onClose: () => void
   onLocalChange?: (id: string) => void
+  onLoadingChange?: (loading: boolean) => void
 }
 
-export default function CustomerForm({ customer, onClose, onLocalChange }: CustomerFormProps) {
+const CustomerForm = forwardRef<CustomerFormRef, CustomerFormProps>(({ customer, onClose, onLocalChange, onLoadingChange }, ref) => {
   const [loading, setLoading] = useState(false)
   const [isStale, setIsStale] = useState(false)
   const [staleMessage, setStaleMessage] = useState('')
@@ -54,6 +61,19 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
   ])
   const [reloading, setReloading] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    submit: () => formRef.current?.requestSubmit(),
+    openDeleteConfirm: () => setShowDeleteConfirm(true),
+    isLoading: loading,
+  }), [loading])
+
+  // Notify parent of loading state changes
+  useEffect(() => {
+    onLoadingChange?.(loading)
+  }, [loading, onLoadingChange])
 
   // Reload customer data from database
   const reloadCustomerData = useCallback(async () => {
@@ -421,7 +441,7 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
       cancelText="Avbryt"
       level="normal"
     />
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
       {/* Stale data warning - fixed center screen */}
       {isStale && (
         <div className="fixed inset-0 flex items-center justify-center z-[100] pointer-events-none">
@@ -446,41 +466,6 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
           </div>
         </div>
       )}
-
-      {/* Actions - Top */}
-      <div className="flex justify-between items-center pb-4 border-b sticky top-0 bg-white z-10">
-        <div>
-          {customer && (
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <Trash2 className="w-5 h-5" />
-              Radera
-            </button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Avbryt
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center gap-2 px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
-          >
-            <Save className="w-5 h-5" />
-            {loading ? 'Sparar...' : 'Spara'}
-          </button>
-        </div>
-      </div>
 
       {/* Basic Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -631,4 +616,8 @@ export default function CustomerForm({ customer, onClose, onLocalChange }: Custo
     </form>
     </>
   )
-}
+})
+
+CustomerForm.displayName = 'CustomerForm'
+
+export default CustomerForm

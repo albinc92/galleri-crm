@@ -3,10 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as XLSX from 'xlsx'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { CustomerWithContacts } from '../types'
-import CustomerForm from './CustomerForm'
+import CustomerForm, { CustomerFormRef } from './CustomerForm'
 import ExcelUploader from './ExcelUploader'
 import { ConfirmationModal } from './ConfirmationModal'
-import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter, RefreshCw, Download, Trash2, RotateCcw } from 'lucide-react'
+import { Search, Plus, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Menu, ChevronDown, Calendar, Mail, Filter, RefreshCw, Download, Trash2, RotateCcw, Save } from 'lucide-react'
 
 // Mock data will be loaded from localStorage or Excel upload
 
@@ -32,9 +32,11 @@ export default function CustomerList() {
   const [realtimeUpdate, setRealtimeUpdate] = useState<{ type: string; id: string; timestamp: number } | null>(null)
   const [deleteConfirmCustomer, setDeleteConfirmCustomer] = useState<CustomerWithContacts | null>(null)
   const [showClearTrashConfirm, setShowClearTrashConfirm] = useState(false)
+  const [formLoading, setFormLoading] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
+  const customerFormRef = useRef<CustomerFormRef>(null)
   const queryClient = useQueryClient()
   const recentLocalChanges = useRef<Set<string>>(new Set())
 
@@ -1016,21 +1018,48 @@ export default function CustomerList() {
       {isFormOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center z-10">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">
                 {selectedCustomer ? 'Redigera Kund' : 'Ny Kund'}
               </h2>
-              <button
-                onClick={handleCloseForm}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => customerFormRef.current?.openDeleteConfirm()}
+                    disabled={formLoading}
+                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Radera"
+                  >
+                    <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="hidden sm:inline text-sm">Radera</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => customerFormRef.current?.submit()}
+                  disabled={formLoading}
+                  className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                  title="Spara"
+                >
+                  <Save className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline text-sm">{formLoading ? 'Sparar...' : 'Spara'}</span>
+                </button>
+                <button
+                  onClick={handleCloseForm}
+                  className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Stäng"
+                >
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
             </div>
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <CustomerForm
+                ref={customerFormRef}
                 customer={selectedCustomer}
                 onClose={handleCloseForm}
+                onLoadingChange={setFormLoading}
                 onLocalChange={(id: string) => {
                   recentLocalChanges.current.add(id)
                   // Clean up after 3 seconds in case realtime event doesn't fire
