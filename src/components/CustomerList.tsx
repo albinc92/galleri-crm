@@ -25,7 +25,8 @@ export default function CustomerList() {
   const [isSortOpen, setIsSortOpen] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'booked' | 'offers' | 'followup'>('all')
-  const [followUpMonth, setFollowUpMonth] = useState<string>('')  // Format: YYYY-MM
+  const [followUpYear, setFollowUpYear] = useState<string>(new Date().getFullYear().toString())
+  const [followUpMonthNum, setFollowMonthNum] = useState<string>('')
   const [showEmailExport, setShowEmailExport] = useState(false)
   const [showTrash, setShowTrash] = useState(false)
   const [realtimeUpdate, setRealtimeUpdate] = useState<{ type: string; id: string; timestamp: number } | null>(null)
@@ -179,11 +180,15 @@ export default function CustomerList() {
     if (activeFilter === 'offers') {
       return customer.contacts?.some(contact => (contact as any).erbjudanden === true)
     }
-    if (activeFilter === 'followup' && followUpMonth) {
+    if (activeFilter === 'followup' && followUpYear) {
       // Check if any contact has a matching "aterkom" date
+      // If no month selected, filter by year only
+      const followUpPrefix = followUpMonthNum 
+        ? `${followUpYear}-${followUpMonthNum}` 
+        : followUpYear
       return customer.contacts?.some(contact => {
         if (!contact.aterkom) return false
-        return contact.aterkom.startsWith(followUpMonth)
+        return contact.aterkom.startsWith(followUpPrefix)
       })
     }
     return true
@@ -693,64 +698,58 @@ export default function CustomerList() {
                 Erbjudanden
               </button>
               <div className="border-t border-gray-100 mt-1 pt-1">
-                <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase">Återkom månad</div>
+                <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase">Återkom period</div>
                 
-                {/* Quick select buttons */}
-                <div className="px-3 pb-2 grid grid-cols-2 gap-1">
-                  {(() => {
-                    const today = new Date()
-                    const months = []
-                    for (let i = 0; i < 6; i++) {
-                      const date = new Date(today.getFullYear(), today.getMonth() + i, 1)
-                      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-                      const label = date.toLocaleDateString('sv-SE', { month: 'short', year: '2-digit' })
-                      months.push({ value, label })
-                    }
-                    return months.map(({ value, label }) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          setFollowUpMonth(value)
-                          setActiveFilter('followup')
-                          setCurrentPage(1)
-                          setIsFilterOpen(false)
-                        }}
-                        className={`px-2 py-1.5 text-xs rounded transition-colors ${
-                          followUpMonth === value
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))
-                  })()}
-                </div>
-                
-                {/* Custom month picker */}
-                <div className="px-3 pb-2">
-                  <input
-                    type="month"
-                    value={followUpMonth}
+                {/* Year and Month dropdowns */}
+                <div className="px-3 pb-2 flex gap-2">
+                  <select
+                    value={followUpYear}
                     onChange={(e) => {
-                      setFollowUpMonth(e.target.value)
-                      if (e.target.value) {
-                        setActiveFilter('followup')
-                        setCurrentPage(1)
-                      } else {
-                        setActiveFilter('all')
-                      }
+                      setFollowUpYear(e.target.value)
+                      setActiveFilter('followup')
+                      setCurrentPage(1)
+                    }}
+                    className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {[...Array(5)].map((_, i) => {
+                      const year = new Date().getFullYear() + i - 1
+                      return (
+                        <option key={year} value={year.toString()}>
+                          {year}
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <select
+                    value={followUpMonthNum}
+                    onChange={(e) => {
+                      setFollowMonthNum(e.target.value)
+                      setActiveFilter('followup')
+                      setCurrentPage(1)
                       setIsFilterOpen(false)
                     }}
-                    className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Annan månad..."
-                  />
+                    className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Alla</option>
+                    <option value="01">Januari</option>
+                    <option value="02">Februari</option>
+                    <option value="03">Mars</option>
+                    <option value="04">April</option>
+                    <option value="05">Maj</option>
+                    <option value="06">Juni</option>
+                    <option value="07">Juli</option>
+                    <option value="08">Augusti</option>
+                    <option value="09">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                  </select>
                 </div>
                 
-                {followUpMonth && (
+                {followUpMonthNum && (
                   <button
                     onClick={() => {
-                      setFollowUpMonth('')
+                      setFollowMonthNum('')
                       setActiveFilter('all')
                       setCurrentPage(1)
                       setIsFilterOpen(false)
