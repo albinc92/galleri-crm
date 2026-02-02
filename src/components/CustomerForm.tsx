@@ -313,34 +313,54 @@ const CustomerForm = forwardRef<CustomerFormRef, CustomerFormProps>(({ customer,
 
       // Update contacts
       if (customerId) {
+        // Helper function to prepare contact data for database
+        const prepareContactData = (contact: typeof ordforande) => ({
+          namn: contact.namn || null,
+          telefon: contact.telefon || null,
+          mobil: contact.mobil || null,
+          email: contact.email || null,
+          senast_kontakt: contact.senast_kontakt || null,
+          aterkom: contact.aterkom || null,
+          erbjudanden: contact.erbjudanden || false,
+          updated_at: new Date().toISOString(),
+        })
+
         // Ordförande - uppdatera om befintlig eller skapa om namn finns
         const existingOrdforande = customer?.contacts?.find((c) => c.role === 'ordforande')
         if (existingOrdforande) {
           // Alltid uppdatera befintlig kontakt (även om bara datum ändras)
-          await supabase
+          const { error } = await supabase
             .from('contacts')
-            .update({ ...ordforande, updated_at: new Date().toISOString() })
+            .update(prepareContactData(ordforande))
             .eq('id', existingOrdforande.id)
+          if (error) console.error('Error updating ordforande:', error)
         } else if (ordforande.namn) {
           // Skapa ny endast om namn finns
-          await supabase.from('contacts').insert([
-            { ...ordforande, customer_id: customerId, role: 'ordforande' as const },
-          ])
+          const { error } = await supabase.from('contacts').insert([{
+            ...prepareContactData(ordforande),
+            customer_id: customerId,
+            role: 'ordforande' as const,
+          }])
+          if (error) console.error('Error inserting ordforande:', error)
         }
 
         // Kassör - uppdatera om befintlig eller skapa om namn finns
         const existingKassor = customer?.contacts?.find((c) => c.role === 'kassor')
         if (existingKassor) {
           // Alltid uppdatera befintlig kontakt (även om bara datum ändras)
-          await supabase
+          const { error } = await supabase
             .from('contacts')
-            .update({ ...kassor, updated_at: new Date().toISOString() })
+            .update(prepareContactData(kassor))
             .eq('id', existingKassor.id)
+          if (error) console.error('Error updating kassor:', error)
         } else if (kassor.namn) {
           // Skapa ny endast om namn finns
-          await supabase.from('contacts').insert([
-            { ...kassor, customer_id: customerId, role: 'kassor' as const },
-          ])
+          const { error } = await supabase.from('contacts').insert([{
+            ...prepareContactData(kassor),
+            customer_id: customerId,
+            role: 'kassor' as const,
+          }])
+          if (error) console.error('Error inserting kassor:', error)
         }
 
         // Sales - hantera uppdateringar, nya och borttagna
