@@ -566,7 +566,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
 
       // Create a map of kundnr -> database id
       const kundnrToId = new Map<string, string>()
-      insertedCustomers.forEach(c => kundnrToId.set(c.kundnr, c.id))
+      insertedCustomers.forEach((c: { kundnr: string; id: string }) => kundnrToId.set(c.kundnr, c.id))
 
       // Step 2: Prepare and batch insert all contacts
       setStatus({
@@ -604,7 +604,7 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
           await supabase
             .from('customers')
             .delete()
-            .in('id', insertedCustomers.map(c => c.id))
+            .in('id', insertedCustomers.map((c: { id: string }) => c.id))
           throw new Error(`Kontakter kunde inte importeras: ${contactsError.message}. Alla ändringar har rullats tillbaka.`)
         }
       }
@@ -641,11 +641,11 @@ export default function ExcelUploader({ onUploadComplete, compact = false }: Exc
           await supabase
             .from('contacts')
             .delete()
-            .in('customer_id', insertedCustomers.map(c => c.id))
+            .in('customer_id', insertedCustomers.map((c: { id: string }) => c.id))
           await supabase
             .from('customers')
             .delete()
-            .in('id', insertedCustomers.map(c => c.id))
+            .in('id', insertedCustomers.map((c: { id: string }) => c.id))
           throw new Error(`Försäljningsdata kunde inte importeras: ${salesError.message}. Alla ändringar har rullats tillbaka.`)
         }
       }
